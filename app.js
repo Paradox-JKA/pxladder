@@ -34,16 +34,21 @@
     var qs = Object.keys(params).map(function (k) {
       return encodeURIComponent(k) + '=' + encodeURIComponent(params[k]);
     }).join('&');
-    return fetch(API + '?' + qs, { method: 'GET' }).then(readJson);
+    return fetch(API + '?' + qs, { method: 'GET' }).then(readJson).catch(netErr);
   }
   function post(body) {
     if (KEY() && !body.key) body.key = KEY();
-    return fetch(API, { method: 'POST', body: JSON.stringify(body) }).then(readJson);
+    return fetch(API, { method: 'POST', body: JSON.stringify(body) }).then(readJson).catch(netErr);
   }
   function readJson(r) {
     return r.text().then(function (t) {
       try { return JSON.parse(t); } catch (e) { return { ok: false, error: 'Bad response: ' + t.slice(0, 160) }; }
     });
+  }
+  function netErr() { return { ok: false, error: 'Network error — check your connection.', net: true }; }
+  // Only a real "your key is not valid" answer should sign the user out.
+  function authFailed(r) {
+    return !r.net && !r.ok && /sign in|signed in|not an organizer|session expired|not valid/i.test(r.error || '');
   }
 
   // ---------------------------------------------------------------- helpers
@@ -110,16 +115,22 @@
     stopPoll();
     var comp = P.get('comp'), view = P.get('view');
 
+    if (view === 'admin') {
+      if (!KEY()) return renderHome('Sign in to reach the organizer console.');
+      return get({ fn: 'whoami' }).then(function (r) {
+        if (!r.ok) { if (authFailed(r)) lsClear(); return renderHome(r.error); }
+        SESSION = r.account;
+        return SESSION.staff_role ? renderAdmin() : renderDashboard();
+      });
+    }
     if (comp && view === 'join') return renderJoin(comp);
-    if (comp) return renderCompetition(comp);          // public
+    if (comp) return renderCompetition(comp);          // public, no sign-in needed
     if (view === 'register') return renderRegister();
-
     if (!KEY()) return renderHome();
 
     get({ fn: 'whoami' }).then(function (r) {
-      if (!r.ok) { lsClear(); return renderHome('That sign-in link is no longer valid — sign in again.'); }
+      if (!r.ok) { if (authFailed(r)) lsClear(); return renderHome(r.error); }
       SESSION = r.account;
-      if (view === 'admin' && SESSION.staff_role) return renderAdmin();
       renderDashboard();
     });
   }
@@ -160,11 +171,12 @@
     setStatus('');
     app.innerHTML =
       '<h1>Create your Paradox account</h1>' +
-      '<p class="sub">One account for the ladder and every tournament. No password — you get a sign-in link.</p>' +
+      '<p class="sub">One account for the ladder and every tournament. No password.</p>' +
       '<div class="panel form-narrow"><form id="regF">' +
-      '<label>Email</label><input name="email" type="email" required>' +
       '<label>Display name (shown on brackets)</label><input name="display_name" maxlength="40" required>' +
       '<label>In-game name (how people find you in JKA)</label><input name="ingame_name" maxlength="40" required>' +
+      '<label>Email <span class="hint">— optional. With one you can get your sign-in link re-sent; without one, a lost key means asking an organizer.</span></label>' +
+      '<input name="email" type="email" placeholder="optional">' +
       '<button type="submit">Create account</button><div id="regMsg"></div></form></div>';
     var f = document.getElementById('regF');
     f.addEventListener('submit', function (e) {
@@ -175,8 +187,15 @@
         display_name: f.display_name.value.trim(), ingame_name: f.ingame_name.value.trim()
       }).then(function (r) {
         if (!r.ok) { document.getElementById('regMsg').innerHTML = msgBox(r.error, 'err'); return; }
-        if (r.key) { lsSet(r.key); location.search = ''; return; }
-        document.getElementById('regMsg').innerHTML = msgBox(r.message || 'Check your email.', 'ok');
+        if (!r.key) { document.getElementById('regMsg').innerHTML = msgBox(r.message || 'Check your email.', 'ok'); return; }
+        lsSet(r.key);   // signed in now — but make them save the key before moving on
+        app.innerHTML =
+          '<h1>You’re in, ' + esc(r.account.display_name) + '</h1>' +
+          msgBox('This is your key. Copy it somewhere safe. It’s the only way back into your account' +
+            (r.emailed ? ' — we also emailed you a sign-in link.' : '. There is no email on file, so if you lose it an organizer has to reset you.'), r.emailed ? 'ok' : 'info') +
+          '<div class="panel form-narrow"><div class="linkbox mono" id="keyBox">' + esc(r.key) + '</div>' +
+          '<div class="inline-actions"><button class="small" data-act="copyKey">Copy key</button>' +
+          '<button class="small ghost" data-act="goDash">I’ve saved it — continue</button></div></div>';
       });
     });
   }
@@ -314,7 +333,11 @@
     startPoll(load, 45000);
     function load() {
       get({ fn: 'me' }).then(function (r) {
-        if (!r.ok) { lsClear(); return renderHome('Please sign in again.'); }
+        if (!r.ok) {
+          if (authFailed(r)) { lsClear(); return renderHome('Please sign in again.'); }
+          setStatus(r.error + ' — retrying…');
+          return;
+        }
         var a = r.account;
         nav([
           { label: 'Dashboard', href: '?', on: true },
@@ -505,7 +528,14 @@
       '<form id="staffF" style="margin-top:12px"><div class="row2">' +
       '<div><label>Email</label><input name="email" type="email" required></div>' +
       '<div><label>Role</label><select name="role"><option value="mod">mod</option><option value="admin">admin</option><option value="none">none (remove)</option></select></div>' +
-      '</div><button class="small" type="submit">Set role</button><div id="staffMsg"></div></form></div>';
+      '</div><button class="small" type="submit">Set role</button><div id="staffMsg"></div></form></div>' +
+      '<h2>Recover a member</h2><div class="panel">' +
+      '<p class="hint">Someone lost their key. Look them up, then reset it and send them the new link.</p>' +
+      '<form id="recF"><div class="row2">' +
+      '<div><label>Display name or email</label><input name="who" required></div>' +
+      '<div style="align-self:end"><button class="small ghost" data-act="acctFind">Look up</button> ' +
+      '<button class="small" data-act="acctReset">Reset key</button></div></div>' +
+      '<div id="recMsg"></div></form></div>';
   }
   function loadStaff() {
     post({ fn: 'staff_list' }).then(function (r) {
@@ -636,18 +666,46 @@
 
   function reload() { route(); }
 
+  function copyText(t, btn) {
+    var done = function () { if (btn) { var o = btn.textContent; btn.textContent = 'Copied ✓'; setTimeout(function () { btn.textContent = o; }, 1500); } };
+    try {
+      if (navigator.clipboard) { navigator.clipboard.writeText(t).then(done, function () { fallback(); }); }
+      else fallback();
+    } catch (e) { fallback(); }
+    function fallback() {
+      var ta = document.createElement('textarea'); ta.value = t; document.body.appendChild(ta);
+      ta.select(); try { document.execCommand('copy'); } catch (e2) {} document.body.removeChild(ta); done();
+    }
+  }
+
   var ACTIONS = {
     pasteKey: function () {
       var k = prompt('Paste your key:');
       if (k && k.trim()) { lsSet(k.trim()); location.search = ''; }
     },
-    logout: function () { lsClear(); location.search = ''; },
+    copyKey: function (b) { copyText(document.getElementById('keyBox').textContent, b); },
+    goDash: function () { location.search = ''; },
+    showKey: function (b) {
+      var box = document.getElementById('myKeyBox');
+      box.textContent = KEY(); box.hidden = false; b.remove();
+    },
+    copyMyKey: function (b) { copyText(KEY(), b); },
+    logout: function () {
+      if (!confirm('Log out on this device? Make sure your key is saved — you’ll need it to get back in.')) return;
+      lsClear(); location.search = '';
+    },
     editProfile: function () {
       document.getElementById('profileBox').innerHTML =
         '<div class="panel form-narrow"><form id="pfF">' +
         '<label>Display name</label><input name="display_name" value="' + esc(SESSION.display_name) + '">' +
         '<label>In-game name</label><input name="ingame_name" value="' + esc(SESSION.ingame_name) + '">' +
-        '<button class="small" data-act="saveProfile">Save</button></form></div>';
+        '<button class="small" data-act="saveProfile">Save</button></form>' +
+        '<hr style="border:none;border-top:1px solid var(--border);margin:14px 0">' +
+        '<label>Your key <span class="hint">— the only way back into your account. Keep a copy.</span></label>' +
+        '<div class="linkbox mono" id="myKeyBox" hidden></div>' +
+        '<div class="inline-actions">' +
+        '<button class="small ghost" data-act="showKey">Show my key</button>' +
+        '<button class="small ghost" data-act="copyMyKey">Copy my key</button></div></div>';
     },
     saveProfile: function () {
       var f = document.getElementById('pfF');
@@ -765,6 +823,30 @@
       staffAct({
         fn: 'match_set', match_id: id, score_a: f.sa.value, score_b: f.sb.value,
         state: f.state.value, server: f.server.value.trim(), settle: b.getAttribute('data-settle') ? 1 : ''
+      });
+    },
+    acctFind: function () {
+      var f = document.getElementById('recF');
+      document.getElementById('recMsg').innerHTML = '<p class="hint">Looking…</p>';
+      post({ fn: 'account_find', who: f.who.value.trim() }).then(function (r) {
+        if (!r.ok) { document.getElementById('recMsg').innerHTML = msgBox(r.error, 'err'); return; }
+        var a = r.account;
+        document.getElementById('recMsg').innerHTML = msgBox(
+          a.display_name + ' · ' + (a.ingame_name || 'no ign') + ' · ' + (a.email || 'no email') +
+          ' · ' + (a.staff_role || 'player') + ' · ' + a.status +
+          (a.last_seen ? ' · last seen ' + ago(a.last_seen) : '') +
+          ' · in ' + (a.enrollments.length) + ' competition(s)', 'info');
+      });
+    },
+    acctReset: function () {
+      var f = document.getElementById('recF');
+      if (!f.who.value.trim()) { toast('Enter who to reset.', 'err'); return; }
+      if (!confirm('Reset this member’s key? Their old key stops working immediately.')) return;
+      post({ fn: 'account_reset', who: f.who.value.trim() }).then(function (r) {
+        if (!r.ok) { document.getElementById('recMsg').innerHTML = msgBox(r.error, 'err'); return; }
+        document.getElementById('recMsg').innerHTML =
+          msgBox('Reset ' + r.display_name + '.' + (r.email ? ' Emailed them the new link.' : ' No email on file — send them this:'), 'ok') +
+          '<div class="linkbox mono">' + esc(r.link) + '</div>';
       });
     }
   };
