@@ -173,8 +173,10 @@
       '<h1>Create your Paradox account</h1>' +
       '<p class="sub">One account for the ladder and every tournament. No password.</p>' +
       '<div class="panel form-narrow"><form id="regF">' +
-      '<label>Display name (shown on brackets)</label><input name="display_name" maxlength="40" required>' +
-      '<label>In-game name (how people find you in JKA)</label><input name="ingame_name" maxlength="40" required>' +
+      '<label>In-game name <span class="hint">— the ONLY thing shown publicly, on the ladder and brackets. Use your JKA name so people can find you.</span></label>' +
+      '<input name="ingame_name" maxlength="40" required>' +
+      '<label>Private handle <span class="hint">— optional, never shown publicly; organizers use it to find your account. Leave blank to reuse your in-game name.</span></label>' +
+      '<input name="display_name" maxlength="40" placeholder="optional">' +
       '<label>Email <span class="hint">— optional. With one you can get your sign-in link re-sent; without one, a lost key means asking an organizer.</span></label>' +
       '<input name="email" type="email" placeholder="optional">' +
       '<button type="submit">Create account</button><div id="regMsg"></div></form></div>';
@@ -190,7 +192,7 @@
         if (!r.key) { document.getElementById('regMsg').innerHTML = msgBox(r.message || 'Check your email.', 'ok'); return; }
         lsSet(r.key);   // signed in now — but make them save the key before moving on
         app.innerHTML =
-          '<h1>You’re in, ' + esc(r.account.display_name) + '</h1>' +
+          '<h1>You’re in, ' + esc(r.account.ingame_name) + '</h1>' +
           msgBox('This is your key. Copy it somewhere safe. It’s the only way back into your account' +
             (r.emailed ? ' — we also emailed you a sign-in link.' : '. There is no email on file, so if you lose it an organizer has to reset you.'), r.emailed ? 'ok' : 'info') +
           '<div class="panel form-narrow"><div class="linkbox mono" id="keyBox">' + esc(r.key) + '</div>' +
@@ -217,16 +219,26 @@
         setStatus('updated ' + ago(Date.now()) + ' · auto-refresh 45s' + (c.season ? ' · season ' + c.season : ''));
         var head = '<h1>' + esc(c.name) + '</h1><p class="sub">' + esc(c.type.replace('_', ' ')) + ' · ' + esc(c.status) +
           ' · best of ' + esc(c.best_of) + ' to ' + esc(c.target_score) + '</p>';
+        var noMatches = !(r.matches || []).length;
+        var pre = (c.type !== 'ladder' && noMatches) ? entrantsPanel(r) : '';
         if (c.type === 'ladder') app.innerHTML = head + ladderView(r);
-        else if (c.type === 'round_robin') app.innerHTML = head + roundRobinView(r);
-        else app.innerHTML = head + bracketView(r);
+        else if (c.type === 'round_robin') app.innerHTML = head + pre + (noMatches ? '' : roundRobinView(r));
+        else app.innerHTML = head + pre + (noMatches ? '' : bracketView(r));
       });
     }
   }
 
   function nameById(r, id) {
     var p = (r.participants || []).filter(function (x) { return x.id === id; })[0];
-    return p ? p.display_name : '';
+    return p ? p.ingame_name : '';
+  }
+  function entrantsPanel(r) {
+    var e = (r.participants || []).filter(function (p) { return p.status === 'active'; });
+    if (!e.length) return '<div class="panel hint">No entrants yet. <a href="?comp=' + esc(r.competition.slug) + '&view=join">Join.</a></div>';
+    return '<h2>Entrants (' + e.length + ')</h2><div class="panel"><table><tbody>' +
+      e.sort(function (a, b) { return String(a.ingame_name).localeCompare(String(b.ingame_name)); })
+        .map(function (p) { return '<tr><td>' + esc(p.ingame_name) + '</td></tr>'; }).join('') +
+      '</tbody></table><p class="hint">The bracket is drawn when an organizer starts the tournament.</p></div>';
   }
   function ladderView(r) {
     var s = r.standings || [];
@@ -236,8 +248,7 @@
       var flags = (p.flags || '').split(/\s+/).filter(Boolean).map(function (f) {
         return '<span class="tag ' + (f === 'inactive' ? '' : 'amber') + '">' + esc(f) + '</span>';
       }).join(' ');
-      return '<tr><td class="rank">' + p.position + '</td><td>' + esc(p.display_name) +
-        ' <span class="hint">' + esc(p.ingame_name) + '</span> ' + flags + '</td>' +
+      return '<tr><td class="rank">' + p.position + '</td><td>' + esc(p.ingame_name) + ' ' + flags + '</td>' +
         '<td class="num">' + p.wins + '–' + p.losses + '</td><td class="num">' + streakCell(p.streak) + '</td>' +
         '<td class="hint">' + (p.last_match_at ? ago(p.last_match_at) : 'never') + '</td></tr>';
     }).join('');
@@ -253,7 +264,7 @@
     var s = r.standings || [];
     var stand = s.length ? '<div class="panel"><table><thead><tr><th>#</th><th>Player</th><th class="num">W–L</th><th class="num">Diff</th></tr></thead><tbody>' +
       s.map(function (p) {
-        return '<tr><td class="rank">' + p.rank + '</td><td>' + esc(p.display_name) + ' <span class="hint">' + esc(p.ingame_name) + '</span></td>' +
+        return '<tr><td class="rank">' + p.rank + '</td><td>' + esc(p.ingame_name) + '</td>' +
           '<td class="num">' + p.w + '–' + p.l + '</td><td class="num">' + (p.rf - p.ra >= 0 ? '+' : '') + (p.rf - p.ra) + '</td></tr>';
       }).join('') + '</tbody></table></div>' : '<div class="panel hint">Standings appear once matches are played.</div>';
     return '<h2>Standings</h2>' + stand + '<h2>Fixtures</h2>' + fixtureList(r);
@@ -345,9 +356,10 @@
         ]);
         setStatus('signed in as ' + a.display_name + ' · updated ' + ago(Date.now()) + ' · auto-refresh 45s');
 
-        var html = '<h1>' + esc(a.display_name) + ' <span class="hint">' + esc(a.ingame_name) + '</span></h1>' +
-          '<p class="sub">' + esc(a.email) + (a.staff_role ? ' · ' + esc(a.staff_role) : '') +
-          ' &nbsp; <a href="#" data-act="logout">log out</a> · <a href="#" data-act="editProfile">edit profile</a></p>' +
+        var handleBit = (a.display_name && a.display_name !== a.ingame_name) ? ' <span class="hint">handle: ' + esc(a.display_name) + '</span>' : '';
+        var html = '<h1>' + esc(a.ingame_name) + handleBit + '</h1>' +
+          '<p class="sub">' + (a.email ? esc(a.email) : 'no email') + (a.staff_role ? ' · ' + esc(a.staff_role) : '') +
+          ' &nbsp; <a href="#" data-act="logout">log out</a> · <a href="#" data-act="editProfile">account</a></p>' +
           '<div id="profileBox"></div>';
 
         // join
@@ -457,7 +469,8 @@
         ));
         setStatus('organizer · ' + r.role + ' · updated ' + ago(Date.now()));
         var html = '<h1>Organizer console</h1>';
-        if (!comp) html += '<p class="sub">Pick a competition above, or create one.</p>' + createForm(r.role) +
+        if (!comp) html += '<p class="sub">Pick a competition above, or create one.</p>' +
+          needsAttention(r) + createForm(r.role) +
           (r.role === 'admin' ? staffSection() + systemSettings(r.settings || []) : '');
         else if (r.competition) html += adminCompView(r);
         app.innerHTML = html;
@@ -466,6 +479,22 @@
         if (comp && r.competition) wireCompEdit(r.competition);
       });
     }
+  }
+
+  function needsAttention(r) {
+    var pend = r.pending_all || [], disp = r.disputes_count || 0;
+    if (!pend.length && !disp) return '';
+    var h = '<h2>Needs attention</h2><div class="panel">';
+    if (disp) h += '<p>' + disp + ' disputed match' + (disp === 1 ? '' : 'es') + ' — open the competition to rule.</p>';
+    if (pend.length) {
+      h += '<table><tbody>' + pend.map(function (p) {
+        return '<tr><td>' + esc(p.ingame_name) + ' <span class="hint">wants into ' + esc(p.comp_name) + '</span></td>' +
+          '<td class="num"><div class="inline-actions">' +
+          '<button class="small" data-act="approve" data-p="' + p.participant_id + '" data-c="' + esc(p.comp_slug) + '">Approve</button>' +
+          '<button class="small ghost" data-act="reject" data-p="' + p.participant_id + '" data-c="' + esc(p.comp_slug) + '">Reject</button></div></td></tr>';
+      }).join('') + '</tbody></table>';
+    }
+    return h + '</div>';
   }
 
   function createForm(role) {
@@ -697,8 +726,8 @@
     editProfile: function () {
       document.getElementById('profileBox').innerHTML =
         '<div class="panel form-narrow"><form id="pfF">' +
-        '<label>Display name</label><input name="display_name" value="' + esc(SESSION.display_name) + '">' +
-        '<label>In-game name</label><input name="ingame_name" value="' + esc(SESSION.ingame_name) + '">' +
+        '<label>In-game name <span class="hint">(shown publicly)</span></label><input name="ingame_name" value="' + esc(SESSION.ingame_name) + '">' +
+        '<label>Private handle <span class="hint">(organizers only)</span></label><input name="display_name" value="' + esc(SESSION.display_name) + '">' +
         '<button class="small" data-act="saveProfile">Save</button></form>' +
         '<hr style="border:none;border-top:1px solid var(--border);margin:14px 0">' +
         '<label>Your key <span class="hint">— the only way back into your account. Keep a copy.</span></label>' +
