@@ -91,6 +91,10 @@ input, select, textarea {
 input:focus, select:focus, textarea:focus { outline: none; border-color: var(--accent-dim); }
 .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .row3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+.form-narrow { max-width: 480px; }
+a.btn { color: #fff; }
+a.btn:hover { text-decoration: none; }
+a.btn.ghost { color: var(--text); }
 
 button, .btn {
   display: inline-block; cursor: pointer; font: inherit; font-size: 14px;
