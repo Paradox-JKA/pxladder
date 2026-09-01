@@ -34,8 +34,9 @@ a:hover { text-decoration: underline; }
   background: linear-gradient(180deg, #14151b, #0e0f13);
   position: sticky; top: 0; z-index: 10;
 }
-.brand { font-weight: 700; font-size: 17px; color: var(--text); letter-spacing: .3px; }
-.brand:hover { text-decoration: none; color: var(--accent); }
+.brand { display: flex; align-items: center; }
+.brand:hover { text-decoration: none; opacity: .85; }
+.brandlogo { height: 20px; width: auto; display: block; }
 #nav { display: flex; gap: 16px; font-size: 14px; color: var(--muted); flex-wrap: wrap; }
 #nav .pill {
   padding: 3px 10px; border: 1px solid var(--border); border-radius: 999px;
