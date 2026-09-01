@@ -149,19 +149,30 @@
         (note ? msgBox(note, 'info') : '') +
         '<h1>Paradox competitions</h1><p class="sub">Sign in to join events and report matches.</p>' +
         '<div class="cards">' + cards + '</div>' +
-        '<h2>Sign in</h2><div class="panel form-narrow"><form id="loginF">' +
-        '<label>Email</label><input name="email" type="email" placeholder="you@example.com" required>' +
+        '<h2>Sign in</h2><div class="panel form-narrow">' +
+        '<form id="loginF"><label>With your email</label>' +
+        '<input name="email" type="email" placeholder="you@example.com" required>' +
         '<button type="submit">Email me a sign-in link</button>' +
-        '<p class="hint">New here? <a href="?view=register">Create an account</a>. ' +
-        'Have a key? <a href="#" data-act="pasteKey">paste it</a>.</p>' +
-        '<div id="loginMsg"></div></form></div>';
-      var f = document.getElementById('loginF');
-      f.addEventListener('submit', function (e) {
+        '<div id="loginMsg"></div></form>' +
+        '<hr style="border:none;border-top:1px solid var(--border);margin:16px 0">' +
+        '<form id="keyF"><label>…or paste your key</label>' +
+        '<input name="key" placeholder="the key you saved at signup" autocomplete="off">' +
+        '<button class="small ghost" type="submit">Sign in with key</button></form>' +
+        '<p class="hint" style="margin-top:14px">New here? <a href="?view=register">Create an account</a>.<br>' +
+        'Lost your key and no email on your account? Ask an organizer in Discord to reset it.</p>' +
+        '</div>';
+      document.getElementById('loginF').addEventListener('submit', function (e) {
         e.preventDefault();
+        var em = e.target.email.value.trim();
         document.getElementById('loginMsg').innerHTML = '<p class="hint">Sending…</p>';
-        post({ fn: 'login', email: f.email.value.trim() }).then(function (res) {
+        post({ fn: 'login', email: em }).then(function (res) {
           document.getElementById('loginMsg').innerHTML = msgBox(res.message || res.error, res.ok ? 'ok' : 'err');
         });
+      });
+      document.getElementById('keyF').addEventListener('submit', function (e) {
+        e.preventDefault();
+        var k = e.target.key.value.trim();
+        if (k) { lsSet(k); location.search = ''; }
       });
     });
   }
