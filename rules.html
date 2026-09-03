@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Rules — Paradox</title>
+  <meta name="theme-color" content="#0e0f13">
+  <link rel="icon" href="favicon.png" sizes="any">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header id="top">
+    <a class="brand" href="./"><img src="logo.png" alt="Paradox" class="brandlogo"></a>
+    <nav id="nav">
+      <a class="pill" href="./">Competitions</a>
+      <a class="pill on" href="rules.html">Rules</a>
+    </nav>
+  </header>
+
+  <main id="app"><div class="loading">Loading…</div></main>
+
+  <footer id="foot"><a href="./">All competitions</a></footer>
+
+  <script src="config.js"></script>
+  <script src="rules.js"></script>
+  <script>
+    (function () {
+      var app = document.getElementById('app');
+      var API = window.PARADOX_API;
+      function esc(s) {
+        return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+          return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+        });
+      }
+      function base() { return location.origin + location.pathname.replace(/rules\.html$/, ''); }
+
+      function render(cfg, comp) {
+        var secs = PXRules.ladder(cfg, comp);
+        var md = PXRules.toMarkdown((comp && comp.name) || 'Paradox Ladder', base(), secs);
+        app.innerHTML =
+          '<h1>Paradox Ladder — Rules</h1>' +
+          '<p class="sub">Season ' + esc((comp && comp.season) || '1') + '. These update automatically if an organizer changes the settings.</p>' +
+          '<div class="panel">' + PXRules.toHtml(secs) +
+          '<div class="inline-actions" style="margin-top:14px"><button class="btn ghost" id="cp">Copy for Discord</button></div>' +
+          '<textarea id="md" hidden readonly rows="18" style="margin-top:10px">' + esc(md) + '</textarea></div>' +
+          '<h2>How signing in works</h2><div class="panel"><ul style="padding-left:18px;margin:0">' +
+          '<li style="margin:3px 0">Create an account with your in-game name. Email is optional.</li>' +
+          '<li style="margin:3px 0">You get a personal key — save it. That key is how you sign back in.</li>' +
+          '<li style="margin:3px 0">If you added an email, you can have a sign-in link re-sent any time.</li>' +
+          '<li style="margin:3px 0">Lost your key with no email on file? Ask an organizer to reset it.</li>' +
+          '<li style="margin:3px 0">Only your in-game name is shown publicly. Your email is never shown.</li>' +
+          '</ul></div>';
+        document.getElementById('cp').addEventListener('click', function () {
+          var t = document.getElementById('md');
+          t.hidden = false; t.focus(); t.select();
+          var ok = function () { var b = document.getElementById('cp'); b.textContent = 'Copied ✓'; setTimeout(function () { b.textContent = 'Copy for Discord'; }, 1500); };
+          try {
+            if (navigator.clipboard) navigator.clipboard.writeText(t.value).then(ok, ok);
+            else { document.execCommand('copy'); ok(); }
+          } catch (e) { try { document.execCommand('copy'); } catch (e2) {} ok(); }
+        });
+      }
+
+      fetch(API + '?fn=state&comp=ladder').then(function (r) { return r.text(); }).then(function (t) {
+        var d = {}; try { d = JSON.parse(t); } catch (e) {}
+        render((d && d.config) || {}, (d && d.competition) || {});
+      }).catch(function () { render({}, {}); });
+    })();
+  </script>
+</body>
+</html>

@@ -86,7 +86,8 @@
   function stopPoll() { if (pollTimer) { clearInterval(pollTimer); pollTimer = null; } }
   function startPoll(fn, ms) { stopPoll(); pollTimer = setInterval(fn, ms || 45000); }
   function nav(items) {
-    navEl.innerHTML = items.filter(Boolean).map(function (i) {
+    items = items.filter(Boolean).concat([{ label: 'Rules', href: 'rules.html' }]);
+    navEl.innerHTML = items.map(function (i) {
       return '<a class="pill' + (i.on ? ' on' : '') + '" href="' + esc(i.href) + '">' + esc(i.label) + '</a>';
     }).join('');
   }
@@ -232,9 +233,12 @@
           ' · best of ' + esc(c.best_of) + ' to ' + esc(c.target_score) + '</p>';
         var noMatches = !(r.matches || []).length;
         var pre = (c.type !== 'ladder' && noMatches) ? entrantsPanel(r) : '';
-        if (c.type === 'ladder') app.innerHTML = head + ladderView(r);
-        else if (c.type === 'round_robin') app.innerHTML = head + pre + (noMatches ? '' : roundRobinView(r));
-        else app.innerHTML = head + pre + (noMatches ? '' : bracketView(r));
+        var rules = (c.type === 'ladder')
+          ? '<p class="hint" style="margin:-8px 0 20px"><a href="rules.html">Full ladder rules →</a></p>'
+          : rulesPanel(c, r.config || {}, slug);
+        if (c.type === 'ladder') app.innerHTML = head + rules + ladderView(r);
+        else if (c.type === 'round_robin') app.innerHTML = head + rules + pre + (noMatches ? '' : roundRobinView(r));
+        else app.innerHTML = head + rules + pre + (noMatches ? '' : bracketView(r));
       });
     }
   }
@@ -242,6 +246,14 @@
   function nameById(r, id) {
     var p = (r.participants || []).filter(function (x) { return x.id === id; })[0];
     return p ? p.ingame_name : '';
+  }
+  function rulesPanel(c, cfg, slug) {
+    var secs = PXRules.competition(c, cfg);
+    var joinUrl = location.origin + location.pathname + '?comp=' + slug + '&view=join';
+    var md = PXRules.toMarkdown(c.name, joinUrl, secs);
+    return '<h2>Format &amp; rules</h2><div class="panel">' + PXRules.toHtml(secs) +
+      '<div class="inline-actions" style="margin-top:14px"><button class="small ghost" data-act="copyRules">Copy for Discord</button></div>' +
+      '<textarea id="rulesMd" hidden readonly rows="14" style="margin-top:10px">' + esc(md) + '</textarea></div>';
   }
   function entrantsPanel(r) {
     var e = (r.participants || []).filter(function (p) { return p.status === 'active'; });
@@ -722,6 +734,12 @@
     pasteKey: function () {
       var k = prompt('Paste your key:');
       if (k && k.trim()) { lsSet(k.trim()); location.search = ''; }
+    },
+    copyRules: function (b) {
+      var ta = document.getElementById('rulesMd');
+      if (!ta) return;
+      ta.hidden = false; ta.focus(); ta.select();
+      copyText(ta.value, b);
     },
     copyKey: function (b) { copyText(document.getElementById('keyBox').textContent, b); },
     goDash: function () { location.search = ''; },
