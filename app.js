@@ -915,8 +915,8 @@
 
   // ---------------------------------------------------------------- go
 
-  if (!API || API.indexOf('script.google.com') < 0) {
-    app.innerHTML = msgBox('Set window.PARADOX_API in config.js to your Apps Script /exec URL.', 'err');
+  if (!API || !/^https:\/\//i.test(API)) {
+    app.innerHTML = msgBox('Set window.PARADOX_API in config.js to the backend URL.', 'err');
   } else {
     route();
   }
