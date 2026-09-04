@@ -468,7 +468,7 @@
     if (!L.can_challenge) html += '<div class="panel hint">You have an active challenge or you’re on cooldown.</div>';
     else if (!(L.challengeable || []).length) html += '<div class="panel hint">Nobody in range right now.</div>';
     else html += '<div class="panel"><table><tbody>' + L.challengeable.map(function (p) {
-      return '<tr><td class="rank">' + p.position + '</td><td>' + esc(p.display_name) + ' <span class="hint">' + esc(p.ingame_name) + '</span></td>' +
+      return '<tr><td class="rank">' + p.position + '</td><td>' + esc(p.ingame_name) + '</td>' +
         '<td class="num">' + p.wins + '–' + p.losses + '</td>' +
         '<td class="num"><button class="small" data-act="challenge" data-p="' + p.id + '">Challenge</button></td></tr>';
     }).join('') + '</tbody></table></div>';
@@ -534,6 +534,11 @@
       '<div><label>Evidence</label><select name="evidence_policy">' +
       '<option value="dispute_only">On dispute only</option><option value="none">None</option>' +
       '<option value="screenshot">Screenshot</option><option value="demo">Demo</option></select></div></div>' +
+      '<div class="row3"><div><label>Start date <span class="hint">(optional)</span></label><input name="start_date" type="date"></div>' +
+      '<div><label>Signup deadline <span class="hint">(optional)</span></label><input name="signup_deadline" type="date"></div>' +
+      '<div><label>Report deadline <span class="hint">(days, optional)</span></label><input name="report_deadline_days" type="number" min="1"></div></div>' +
+      '<div class="row2"><div><label><input type="checkbox" name="start_tentative" style="width:auto"> Start date is tentative</label></div>' +
+      '<div><label>Visibility</label><select name="visibility"><option value="open">Open (@everyone)</option><option value="internal">Internal (@members)</option></select></div></div>' +
       '<button type="submit">Create</button><div id="crMsg"></div></form></div>';
   }
   function wireCreate() {
@@ -544,7 +549,10 @@
       document.getElementById('crMsg').innerHTML = '<p class="hint">Creating…</p>';
       post({
         fn: 'create', name: f.name.value.trim(), type: f.type.value, confirm_mode: f.confirm_mode.value,
-        evidence_policy: f.evidence_policy.value, best_of: f.best_of.value, target_score: f.target_score.value
+        evidence_policy: f.evidence_policy.value, best_of: f.best_of.value, target_score: f.target_score.value,
+        start_date: f.start_date.value, start_tentative: f.start_tentative.checked,
+        signup_deadline: f.signup_deadline.value, report_deadline_days: f.report_deadline_days.value,
+        visibility: f.visibility.value
       }).then(function (r) {
         if (!r.ok) { document.getElementById('crMsg').innerHTML = msgBox(r.error, 'err'); return; }
         location.search = '?view=admin&comp=' + r.slug;
@@ -644,6 +652,13 @@
       '</select></div></div>' +
       '<div class="row2"><div><label>Best of</label><input name="best_of" type="number" min="1" value="' + esc(c.best_of) + '"></div>' +
       '<div><label>Target score</label><input name="target_score" type="number" min="1" value="' + esc(c.target_score) + '"></div></div>' +
+      '<div class="row3"><div><label>Start date</label><input name="start_date" type="date" value="' + esc(c.start_date || '') + '"></div>' +
+      '<div><label>Signup deadline</label><input name="signup_deadline" type="date" value="' + esc(c.signup_deadline || '') + '"></div>' +
+      '<div><label>Report deadline (days)</label><input name="report_deadline_days" type="number" min="1" value="' + esc(c.report_deadline_days || '') + '"></div></div>' +
+      '<div class="row2"><div><label><input type="checkbox" name="start_tentative" style="width:auto"' + (c.start_tentative === 'TRUE' ? ' checked' : '') + '> Start date is tentative</label></div>' +
+      '<div><label>Visibility</label><select name="visibility">' +
+      '<option value="open"' + (c.visibility !== 'internal' ? ' selected' : '') + '>Open (@everyone)</option>' +
+      '<option value="internal"' + (c.visibility === 'internal' ? ' selected' : '') + '>Internal (@members)</option></select></div></div>' +
       '<label><input type="checkbox" name="auto_approve" style="width:auto"' + (c.auto_approve === 'TRUE' ? ' checked' : '') + '> Auto-approve joins</label>' +
       '<button class="small" data-act="compEdit" data-c="' + esc(c.slug) + '">Save settings</button></form></details>';
 
@@ -842,7 +857,10 @@
       staffAct({
         fn: 'comp_edit', comp: b.getAttribute('data-c'),
         name: f.name.value.trim(), confirm_mode: f.confirm_mode.value, evidence_policy: f.evidence_policy.value,
-        best_of: f.best_of.value, target_score: f.target_score.value, auto_approve: f.auto_approve.checked
+        best_of: f.best_of.value, target_score: f.target_score.value, auto_approve: f.auto_approve.checked,
+        start_date: f.start_date.value, start_tentative: f.start_tentative.checked,
+        signup_deadline: f.signup_deadline.value, report_deadline_days: f.report_deadline_days.value,
+        visibility: f.visibility.value
       });
     },
     compDelete: function (b) {

@@ -42,11 +42,17 @@
     cfg = cfg || {};
     var s = [];
     s.push({ h: 'Format', lines: [typeName(c.type) + (typeBlurb(c.type) ? ' — ' + typeBlurb(c.type) : '')] });
+    if (c.start_date) {
+      s.push({ h: 'Schedule', lines: [
+        (c.start_tentative === 'TRUE' || c.start_tentative === true ? 'Tentative start: ' : 'Starts: ') + c.start_date +
+          (c.start_tentative === 'TRUE' || c.start_tentative === true ? ' (subject to change).' : '.')
+      ] });
+    }
     s.push({ h: 'Matches', lines: [
       'Best of ' + c.best_of + ', to ' + c.target_score + '.',
       'Played on Paradox servers.',
       'Arrange each match with your opponent and play it promptly — organizers may step in on stalled matches.'
-    ] });
+    ].concat(c.report_deadline_days ? ['Once your match is ready to play, you have ' + c.report_deadline_days + ' day(s) to report a result before organizers step in.'] : []) });
     var rep = reporting(c, cfg); var ev = evidence(c);
     s.push({ h: 'Reporting', lines: ev ? rep.concat([ev]) : rep });
     s.push({ h: 'Disputes', lines: [
@@ -58,7 +64,7 @@
         ? 'Registration is reviewed by an organizer before you are in.'
         : 'Open registration — anyone with an account joins instantly.',
       'One entry per person. The bracket is drawn when an organizer starts the tournament.'
-    ] });
+    ].concat(c.signup_deadline ? ['Signups close ' + c.signup_deadline + '.'] : []) });
     return s;
   };
 
@@ -67,7 +73,8 @@
     cfg = cfg || {}; comp = comp || {};
     var range = cfg.challenge_range || 4, acc = cfg.accept_days || 3, idle = cfg.inactivity_days || 10,
       rem = cfg.rematch_hours || 48, lcd = cfg.loss_cooldown_hours || 12, dcd = cfg.defense_cooldown_hours || 6,
-      acf = cfg.auto_confirm_hours || 24, bo = comp.best_of || 3, ts = comp.target_score || 10;
+      acf = cfg.auto_confirm_hours || 24, bo = comp.best_of || 3, ts = comp.target_score || 10,
+      mrd = cfg.ladder_match_reminder_days || 3, mdd = cfg.ladder_match_deadline_days || 7;
     return [
       { h: 'Joining', lines: [
         'Anyone with a Paradox account can join — you enter at the bottom.',
@@ -84,7 +91,9 @@
       { h: 'Matches', lines: [
         'Best of ' + bo + ', duels to ' + ts + '. Played on Paradox servers.',
         'The winner reports the score. The loser then confirms or disputes.',
-        'If the loser does nothing within ' + acf + ' hours, the result auto-confirms.'
+        'If the loser does nothing within ' + acf + ' hours, the result auto-confirms.',
+        'Once a challenge is accepted, play it. You’ll get a reminder after ' + mrd + ' days.',
+        'If it still hasn’t been played after ' + mdd + ' days, the challenge expires and BOTH players drop one position — no fault-finding, so don’t accept a challenge you don’t intend to actually play.'
       ] },
       { h: 'Moving up', lines: [
         'Win your challenge and you take that player’s position; everyone between shifts down one.',
@@ -95,7 +104,8 @@
         'Both sides submit a screenshot or demo; an organizer rules on it.'
       ] },
       { h: 'Staying active', lines: [
-        'Play at least one match every ' + idle + ' days. Idle longer and you slowly drop down the ladder until you play again.'
+        'Play at least one match every ' + idle + ' days. Idle longer and you slowly drop down the ladder until you play again.',
+        'The #1 spot is exempt — you can only be challenged there, never initiate, so you can’t be dropped for inactivity.'
       ] },
       { h: 'Seasons', lines: [
         'The ladder runs in seasons. At season end, standings are recorded and the ladder resets.'
