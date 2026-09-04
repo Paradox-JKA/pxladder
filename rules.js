@@ -74,7 +74,8 @@
     var range = cfg.challenge_range || 4, acc = cfg.accept_days || 3, idle = cfg.inactivity_days || 10,
       rem = cfg.rematch_hours || 48, lcd = cfg.loss_cooldown_hours || 12, dcd = cfg.defense_cooldown_hours || 6,
       acf = cfg.auto_confirm_hours || 24, bo = comp.best_of || 3, ts = comp.target_score || 10,
-      mrd = cfg.ladder_match_reminder_days || 3, mdd = cfg.ladder_match_deadline_days || 7;
+      mrd = cfg.ladder_match_reminder_days || 3, mdd = cfg.ladder_match_deadline_days || 7,
+      tl = cfg.match_time_limit_minutes || 0, noSw = cfg.no_saber_switching === 'TRUE' || cfg.no_saber_switching === true;
     return [
       { h: 'Joining', lines: [
         'Anyone with a Paradox account can join — you enter at the bottom.',
@@ -89,12 +90,15 @@
         'No instant rematches — ' + rem + ' hours, or play someone else first, before re-challenging the same player.'
       ] },
       { h: 'Matches', lines: [
-        'Best of ' + bo + ', duels to ' + ts + '. Played on Paradox servers.',
+        'Best of ' + bo + ', duels to ' + ts + '. Played on Paradox servers.'
+      ].concat(tl ? ['Each duel is capped at ' + tl + ' minutes.'] : [])
+        .concat(noSw ? ['No switching saber styles or hilts mid-duel — lock your loadout for the whole match (ESL ruleset).'] : [])
+        .concat([
         'The winner reports the score. The loser then confirms or disputes.',
         'If the loser does nothing within ' + acf + ' hours, the result auto-confirms.',
         'Once a challenge is accepted, play it. You’ll get a reminder after ' + mrd + ' days.',
         'If it still hasn’t been played after ' + mdd + ' days, the challenge expires and BOTH players drop one position — no fault-finding, so don’t accept a challenge you don’t intend to actually play.'
-      ] },
+      ]) },
       { h: 'Moving up', lines: [
         'Win your challenge and you take that player’s position; everyone between shifts down one.',
         'Lose and nothing changes (a cooldown applies).'
