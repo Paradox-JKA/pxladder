@@ -271,7 +271,8 @@
       var flags = (p.flags || '').split(/\s+/).filter(Boolean).map(function (f) {
         return '<span class="tag ' + (f === 'inactive' ? '' : 'amber') + '">' + esc(f) + '</span>';
       }).join(' ');
-      return '<tr><td class="rank">' + p.position + '</td><td>' + esc(p.ingame_name) + ' ' + flags + '</td>' +
+      var roster = (p.roster || []).length ? ' <span class="hint">(' + p.roster.map(esc).join(', ') + ')</span>' : '';
+      return '<tr><td class="rank">' + p.position + '</td><td>' + esc(p.ingame_name) + roster + ' ' + flags + '</td>' +
         '<td class="num">' + p.wins + '–' + p.losses + '</td><td class="num">' + streakCell(p.streak) + '</td>' +
         '<td class="hint">' + (p.last_match_at ? ago(p.last_match_at) : 'never') + '</td></tr>';
     }).join('');
@@ -287,7 +288,8 @@
     var s = r.standings || [];
     var stand = s.length ? '<div class="panel"><table><thead><tr><th>#</th><th>Player</th><th class="num">W–L</th><th class="num">Diff</th></tr></thead><tbody>' +
       s.map(function (p) {
-        return '<tr><td class="rank">' + p.rank + '</td><td>' + esc(p.ingame_name) + '</td>' +
+        var roster = (p.roster || []).length ? ' <span class="hint">(' + p.roster.map(esc).join(', ') + ')</span>' : '';
+        return '<tr><td class="rank">' + p.rank + '</td><td>' + esc(p.ingame_name) + roster + '</td>' +
           '<td class="num">' + p.w + '–' + p.l + '</td><td class="num">' + (p.rf - p.ra >= 0 ? '+' : '') + (p.rf - p.ra) + '</td></tr>';
       }).join('') + '</tbody></table></div>' : '<div class="panel hint">Standings appear once matches are played.</div>';
     return '<h2>Standings</h2>' + stand + '<h2>Fixtures</h2>' + fixtureList(r);
@@ -372,6 +374,13 @@
           setStatus(r.error + ' — retrying…');
           return;
         }
+        var needsTeams = (r.joinable || []).some(function (c) { return c.team_size > 0; });
+        (needsTeams ? post({ fn: 'team_list' }) : Promise.resolve({ ok: true, teams: [] })).then(function (tr) {
+          renderDash(r, (tr && tr.ok && tr.teams) || []);
+        });
+      });
+    }
+    function renderDash(r, myTeams) {
         var a = r.account;
         nav([
           { label: 'Dashboard', href: '?', on: true },
@@ -388,6 +397,7 @@
         // join
         if ((r.joinable || []).length) {
           html += '<h2>Join an event</h2><div class="panel"><table><tbody>' + r.joinable.map(function (c) {
+            if (c.team_size > 0) return teamJoinRow(c, myTeams);
             return '<tr><td>' + esc(c.name) + ' <span class="hint">' + esc(c.type.replace('_', ' ')) + '</span></td>' +
               '<td class="num"><button class="small" data-act="joinNow" data-c="' + esc(c.slug) + '">Join</button></td></tr>';
           }).join('') + '</tbody></table></div>';
@@ -409,11 +419,10 @@
         if (!mine.length) html += '<div class="panel hint">Nothing to play right now.</div>';
         else mine.forEach(function (m) { html += playerMatchCard(m, r.my_participant_ids || []); });
 
-        // ladder
-        if (r.ladder) html += ladderChallengeUI(r.ladder);
+        // ladders (one per ladder this account is active on)
+        (r.ladders || []).forEach(function (L) { html += ladderChallengeUI(L); });
 
         app.innerHTML = html;
-      });
     }
   }
 
@@ -451,7 +460,7 @@
       '<button class="small" data-act="evidence" data-m="' + m.id + '">Submit evidence</button></form>';
   }
   function ladderChallengeUI(L) {
-    var html = '<h2>Ladder — you are #' + L.position + '</h2>';
+    var html = '<h2>' + esc(L.comp_name || 'Ladder') + ' — you are #' + L.position + '</h2>';
     if ((L.my_challenges || []).length) {
       html += '<div class="panel">' + L.my_challenges.map(function (x) {
         if (x.incoming && x.state === 'pending') {
@@ -526,7 +535,7 @@
       '<label>Name</label><input name="name" required>' +
       '<div class="row2"><div><label>Format</label><select name="type">' +
       '<option value="single_elim">Single elimination</option><option value="double_elim">Double elimination</option>' +
-      '<option value="round_robin">Round robin</option></select></div>' +
+      '<option value="round_robin">Round robin</option><option value="ladder">Ladder (ongoing, no bracket)</option></select></div>' +
       '<div><label>Confirm mode</label><select name="confirm_mode">' +
       '<option value="opponent">Opponent confirms</option><option value="mutual">Both report</option><option value="trust">Trust (instant)</option></select></div></div>' +
       '<div class="row3"><div><label>Best of</label><input name="best_of" type="number" value="3" min="1"></div>' +
@@ -534,6 +543,8 @@
       '<div><label>Evidence</label><select name="evidence_policy">' +
       '<option value="dispute_only">On dispute only</option><option value="none">None</option>' +
       '<option value="screenshot">Screenshot</option><option value="demo">Demo</option></select></div></div>' +
+      '<label>Team size <span class="hint">(blank = solo/individual; 2+ = teams, one captain registers for everyone)</span></label>' +
+      '<input name="team_size" type="number" min="2" placeholder="e.g. 2 for 2v2">' +
       '<div class="row3"><div><label>Start date <span class="hint">(optional)</span></label><input name="start_date" type="date"></div>' +
       '<div><label>Signup deadline <span class="hint">(optional)</span></label><input name="signup_deadline" type="date"></div>' +
       '<div><label>Report deadline <span class="hint">(days, optional)</span></label><input name="report_deadline_days" type="number" min="1"></div></div>' +
@@ -552,7 +563,7 @@
         evidence_policy: f.evidence_policy.value, best_of: f.best_of.value, target_score: f.target_score.value,
         start_date: f.start_date.value, start_tentative: f.start_tentative.checked,
         signup_deadline: f.signup_deadline.value, report_deadline_days: f.report_deadline_days.value,
-        visibility: f.visibility.value
+        visibility: f.visibility.value, team_size: f.team_size.value
       }).then(function (r) {
         if (!r.ok) { document.getElementById('crMsg').innerHTML = msgBox(r.error, 'err'); return; }
         location.search = '?view=admin&comp=' + r.slug;
@@ -660,6 +671,8 @@
       '<option value="open"' + (c.visibility !== 'internal' ? ' selected' : '') + '>Open (@everyone)</option>' +
       '<option value="internal"' + (c.visibility === 'internal' ? ' selected' : '') + '>Internal (@members)</option></select></div></div>' +
       '<label><input type="checkbox" name="auto_approve" style="width:auto"' + (c.auto_approve === 'TRUE' ? ' checked' : '') + '> Auto-approve joins</label>' +
+      '<label>Team size <span class="hint">(blank = solo; changing this after teams have joined only affects new joins)</span></label>' +
+      '<input name="team_size" type="number" min="2" value="' + esc(c.team_size || '') + '">' +
       '<button class="small" data-act="compEdit" data-c="' + esc(c.slug) + '">Save settings</button></form></details>';
 
     html += '<h2>Pending signups (' + pend.length + ')</h2>';
@@ -796,6 +809,23 @@
         else b.disabled = false;
       });
     },
+    joinTeam: function (b) {
+      var slug = b.getAttribute('data-c');
+      var wrap = b.closest('.panel');
+      var sel = wrap.querySelector('[data-teamsel]');
+      var teamId = sel ? sel.value : '';
+      var teamName = wrap.querySelector('[data-teamname]').value.trim();
+      var roster = wrap.querySelector('[data-roster]').value.split('\n').map(function (s) { return s.trim(); }).filter(Boolean);
+      var save = wrap.querySelector('[data-savechk]').checked;
+      if (!teamId && !teamName) { toast('Enter a team name (or pick a saved team)', 'err'); return; }
+      b.disabled = true;
+      post({ fn: 'join', comp: slug, team_id: teamId || undefined, team_name: teamName || undefined, roster_names: roster, save_team: save }).then(function (r) {
+        var box = wrap.querySelector('.joinMsg');
+        if (box) box.innerHTML = msgBox(r.ok ? (r.message || 'Joined.') : r.error, r.ok ? 'ok' : 'err');
+        if (r.ok) setTimeout(function () { location.search = ''; }, 900);
+        else b.disabled = false;
+      });
+    },
     report: function (b) {
       var id = b.getAttribute('data-m');
       var f = document.querySelector('[data-reportform="' + id + '"]');
@@ -860,7 +890,7 @@
         best_of: f.best_of.value, target_score: f.target_score.value, auto_approve: f.auto_approve.checked,
         start_date: f.start_date.value, start_tentative: f.start_tentative.checked,
         signup_deadline: f.signup_deadline.value, report_deadline_days: f.report_deadline_days.value,
-        visibility: f.visibility.value
+        visibility: f.visibility.value, team_size: f.team_size.value
       });
     },
     compDelete: function (b) {

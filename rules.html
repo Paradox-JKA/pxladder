@@ -38,7 +38,7 @@
         var secs = PXRules.ladder(cfg, comp);
         var md = PXRules.toMarkdown((comp && comp.name) || 'Paradox Ladder', base(), secs);
         app.innerHTML =
-          '<h1>Paradox Ladder — Rules</h1>' +
+          '<h1>' + esc((comp && comp.name) || 'Paradox Ladder') + ' — Rules</h1>' +
           '<p class="sub">Season ' + esc((comp && comp.season) || '1') + '. These update automatically if an organizer changes the settings.</p>' +
           '<div class="panel">' + PXRules.toHtml(secs) +
           '<div class="inline-actions" style="margin-top:14px"><button class="btn ghost" id="cp">Copy for Discord</button></div>' +
@@ -61,7 +61,8 @@
         });
       }
 
-      fetch(API + '?fn=state&comp=ladder').then(function (r) { return r.text(); }).then(function (t) {
+      var qcomp = new URLSearchParams(location.search).get('comp') || 'ladder';
+      fetch(API + '?fn=state&comp=' + encodeURIComponent(qcomp)).then(function (r) { return r.text(); }).then(function (t) {
         var d = {}; try { d = JSON.parse(t); } catch (e) {}
         render((d && d.config) || {}, (d && d.competition) || {});
       }).catch(function () { render({}, {}); });

@@ -63,7 +63,9 @@
       c.auto_approve === false
         ? 'Registration is reviewed by an organizer before you are in.'
         : 'Open registration — anyone with an account joins instantly.',
-      'One entry per person. The bracket is drawn when an organizer starts the tournament.'
+      (c.team_size > 0
+        ? 'Teams of up to ' + c.team_size + '. One player registers for the whole team and reports on its behalf — teammates don’t need their own account unless they want one.'
+        : 'One entry per person.') + ' The bracket is drawn when an organizer starts the tournament.'
     ].concat(c.signup_deadline ? ['Signups close ' + c.signup_deadline + '.'] : []) });
     return s;
   };
@@ -75,9 +77,14 @@
       rem = cfg.rematch_hours || 48, lcd = cfg.loss_cooldown_hours || 12, dcd = cfg.defense_cooldown_hours || 6,
       acf = cfg.auto_confirm_hours || 24, bo = comp.best_of || 3, ts = comp.target_score || 10,
       mrd = cfg.ladder_match_reminder_days || 3, mdd = cfg.ladder_match_deadline_days || 7,
-      tl = cfg.match_time_limit_minutes || 0, noSw = cfg.no_saber_switching === 'TRUE' || cfg.no_saber_switching === true;
+      tl = cfg.match_time_limit_minutes || 0, noSw = cfg.no_saber_switching === 'TRUE' || cfg.no_saber_switching === true,
+      teamSize = comp.team_size || 0;
     return [
-      { h: 'Joining', lines: [
+      { h: 'Joining', lines: teamSize > 0 ? [
+        'Teams of up to ' + teamSize + ' — one player registers for the whole team and enters at the bottom.',
+        'Teammates don’t need their own account unless they want one; the registering player reports and challenges on the team’s behalf.',
+        'One ladder spot per team.'
+      ] : [
         'Anyone with a Paradox account can join — you enter at the bottom.',
         'One ladder spot per person.'
       ] },
