@@ -78,7 +78,7 @@
       acf = cfg.auto_confirm_hours || 24, bo = comp.best_of || 3, ts = comp.target_score || 10,
       mrd = cfg.ladder_match_reminder_days || 3, mdd = cfg.ladder_match_deadline_days || 7,
       tl = cfg.match_time_limit_minutes || 0, noSw = cfg.no_saber_switching === 'TRUE' || cfg.no_saber_switching === true,
-      teamSize = comp.team_size || 0;
+      amd = cfg.away_max_days || 21, teamSize = comp.team_size || 0;
     return [
       { h: 'Joining', lines: teamSize > 0 ? [
         'Teams of up to ' + teamSize + ' — one player registers for the whole team and enters at the bottom.',
@@ -92,6 +92,7 @@
         'You may challenge any player up to ' + range + ' positions above you. Challenges only go up.',
         'One challenge at a time — you cannot stack them or be in two at once.',
         'The challenged player has ' + acc + ' days to accept. No response, or a decline, is an automatic forfeit — the challenger takes their position.',
+        'Changed your mind before it’s accepted? Withdraw your challenge — no penalty, then challenge someone else.',
         'No instant rematches — ' + rem + ' hours, or play someone else first, before re-challenging the same player. You can still challenge someone else right away.'
       ] },
       { h: 'Matches', lines: [
@@ -106,7 +107,13 @@
       ]) },
       { h: 'Moving up', lines: [
         'Win your challenge and you take that player’s position; everyone between shifts down one.',
-        'Lose and nothing changes (a cooldown applies).'
+        'Lose and nothing changes — you just can’t re-challenge that same player for ' + rem + ' hours.'
+      ] },
+      { h: 'Going away', lines: [
+        'Heading out for a while? Mark yourself Away with a return date up to ' + amd + ' days out (or ask an organizer to).',
+        'While away you can’t be challenged or challenge anyone, and you won’t drop for inactivity.',
+        'You keep your position — but if people climb the ladder while you’re gone, they can still pass you.',
+        'Away lifts automatically on your return date, or clear it yourself when you’re back.'
       ] },
       { h: 'Disputes', lines: [
         'Either player can dispute a reported result.',

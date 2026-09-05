@@ -272,7 +272,9 @@
         return '<span class="tag ' + (f === 'inactive' ? '' : 'amber') + '">' + esc(f) + '</span>';
       }).join(' ');
       var roster = (p.roster || []).length ? ' <span class="hint">(' + p.roster.map(esc).join(', ') + ')</span>' : '';
-      return '<tr><td class="rank">' + p.position + '</td><td>' + esc(p.ingame_name) + roster + ' ' + flags + '</td>' +
+      var away = (p.away_until && Date.parse(p.away_until) > Date.now())
+        ? ' <span class="tag">away · back ' + esc(String(p.away_until).slice(0, 10)) + '</span>' : '';
+      return '<tr><td class="rank">' + p.position + '</td><td>' + esc(p.ingame_name) + roster + away + ' ' + flags + '</td>' +
         '<td class="num">' + p.wins + '–' + p.losses + '</td><td class="num">' + streakCell(p.streak) + '</td>' +
         '<td class="hint">' + (p.last_match_at ? ago(p.last_match_at) : 'never') + '</td></tr>';
     }).join('');
@@ -461,6 +463,7 @@
   }
   function ladderChallengeUI(L) {
     var html = '<h2>' + esc(L.comp_name || 'Ladder') + ' — you are #' + L.position + '</h2>';
+    html += awayControl(L);
     if ((L.my_challenges || []).length) {
       html += '<div class="panel">' + L.my_challenges.map(function (x) {
         if (x.incoming && x.state === 'pending') {
@@ -469,12 +472,16 @@
             '<div class="inline-actions"><button class="small" data-act="accept" data-c="' + x.id + '">Accept</button>' +
             '<button class="small ghost" data-act="decline" data-c="' + x.id + '">Decline (cede position)</button></div></div>';
         }
+        var canWithdraw = !x.incoming && x.state === 'pending';
         return '<div class="match-card"><div class="vs">' + (x.incoming ? 'From <b>' + esc(x.challenger) + '</b>' : 'You challenged <b>' + esc(x.defender) + '</b>') +
-          ' — ' + esc(x.state) + '</div><p class="hint">accept-by ' + until(x.accept_by) + '</p></div>';
+          ' — ' + esc(x.state) + '</div><p class="hint">accept-by ' + until(x.accept_by) + '</p>' +
+          (canWithdraw ? '<div class="inline-actions"><button class="small ghost" data-act="withdraw" data-c="' + x.id + '">Withdraw</button></div>' : '') +
+          '</div>';
       }).join('') + '</div>';
     }
     html += '<h3 style="color:var(--muted)">Who you can challenge</h3>';
-    if (!L.can_challenge) html += '<div class="panel hint">You have an active challenge or you’re on cooldown.</div>';
+    if (L.away_until && Date.parse(L.away_until) > Date.now()) html += '<div class="panel hint">You’re marked away — clear it above to challenge.</div>';
+    else if (!L.can_challenge) html += '<div class="panel hint">You have an active challenge right now.</div>';
     else if (!(L.challengeable || []).length) html += '<div class="panel hint">Nobody in range right now.</div>';
     else html += '<div class="panel"><table><tbody>' + L.challengeable.map(function (p) {
       return '<tr><td class="rank">' + p.position + '</td><td>' + esc(p.ingame_name) + '</td>' +
@@ -482,6 +489,21 @@
         '<td class="num"><button class="small" data-act="challenge" data-p="' + p.id + '">Challenge</button></td></tr>';
     }).join('') + '</tbody></table></div>';
     return html;
+  }
+
+  function awayControl(L) {
+    var awayNow = L.away_until && Date.parse(L.away_until) > Date.now();
+    if (awayNow) {
+      return '<div class="panel"><b>You’re away until ' + esc(String(L.away_until).slice(0, 10)) + '.</b> ' +
+        'You can’t be challenged or challenge anyone, and you won’t drop for inactivity. ' +
+        '<button class="small ghost" data-act="awayClear" data-c="' + esc(L.comp_slug) + '">I’m back</button></div>';
+    }
+    return '<details class="panel"><summary>Going away?</summary>' +
+      '<p class="hint">Mark yourself away with a return date. You keep your position and won’t drop for inactivity, ' +
+      'but people climbing the ladder can still pass you.</p>' +
+      '<div class="inline-actions"><input type="date" data-awaydate>' +
+      '<button class="small" data-act="awaySet" data-c="' + esc(L.comp_slug) + '">Set away</button></div>' +
+      '<div class="awayMsg"></div></details>';
   }
 
   // ---------------------------------------------------------------- admin
@@ -696,9 +718,16 @@
     }).join('') : '<div class="panel hint">No disputes.</div>';
 
     var STAT = ['active', 'pending', 'inactive', 'withdrawn', 'banned', 'rejected'];
+    var isLadderComp = c.type === 'ladder';
     html += '<h2>Participants (' + parts.length + ')</h2><div class="panel"><table><thead><tr>' +
-      '<th>#</th><th>Player</th><th>Status</th><th></th></tr></thead><tbody>' +
+      '<th>#</th><th>Player</th><th>Status</th><th></th>' + (isLadderComp ? '<th>Away</th>' : '') + '</tr></thead><tbody>' +
       parts.sort(function (a, b) { return (Number(a.position) || 99) - (Number(b.position) || 99); }).map(function (p) {
+        var awayNow = p.away_until && Date.parse(p.away_until) > Date.now();
+        var awayCell = !isLadderComp ? '' : '<td class="num"><form id="af_' + p.id + '">' +
+          (awayNow
+            ? '<span class="hint">→ ' + esc(String(p.away_until).slice(0, 10)) + '</span> <button class="small ghost" data-act="modAwayClear" data-p="' + p.id + '">Clear</button>'
+            : '<input type="date" name="d" style="width:130px"> <button class="small" data-act="modAwaySet" data-p="' + p.id + '">Set</button>') +
+          '</form></td>';
         return '<tr><td class="rank">' +
           (c.type === 'ladder'
             ? '<input style="width:52px" name="pos" form="pf_' + p.id + '" value="' + esc(p.position || '') + '">'
@@ -706,7 +735,8 @@
           '<td>' + esc(p.display_name) + ' <span class="hint">' + esc(p.ingame_name) + (p.email ? ' · ' + esc(p.email) : '') + '</span></td>' +
           '<td><select name="status" form="pf_' + p.id + '">' +
           STAT.map(function (v) { return '<option' + (p.status === v ? ' selected' : '') + '>' + v + '</option>'; }).join('') + '</select></td>' +
-          '<td class="num"><form id="pf_' + p.id + '"><button class="small" data-act="partSet" data-p="' + p.id + '" data-c="' + esc(c.slug) + '">Save</button></form></td></tr>';
+          '<td class="num"><form id="pf_' + p.id + '"><button class="small" data-act="partSet" data-p="' + p.id + '" data-c="' + esc(c.slug) + '">Save</button></form></td>' +
+          awayCell + '</tr>';
       }).join('') + '</tbody></table>' +
       '<form id="paF" style="margin-top:14px"><div class="row3">' +
       '<div><label>Add by account email</label><input name="email" type="email" placeholder="optional"></div>' +
@@ -826,6 +856,28 @@
         else b.disabled = false;
       });
     },
+    awaySet: function (b) {
+      var slug = b.getAttribute('data-c');
+      var wrap = b.closest('details');
+      var d = wrap.querySelector('[data-awaydate]').value;
+      if (!d) { toast('Pick a return date', 'err'); return; }
+      b.disabled = true;
+      post({ fn: 'away_set', comp: slug, until: d }).then(function (r) {
+        var box = wrap.querySelector('.awayMsg');
+        if (box) box.innerHTML = msgBox(r.ok ? 'Away set — see you on your return date.' : r.error, r.ok ? 'ok' : 'err');
+        if (r.ok) setTimeout(function () { location.search = ''; }, 900);
+        else b.disabled = false;
+      });
+    },
+    awayClear: function (b) {
+      var slug = b.getAttribute('data-c');
+      b.disabled = true;
+      post({ fn: 'away_set', comp: slug, until: '' }).then(function (r) {
+        toast(r.ok ? 'Welcome back — you’re active again.' : r.error, r.ok ? 'ok' : 'err');
+        if (r.ok) setTimeout(function () { location.search = ''; }, 700);
+        else b.disabled = false;
+      });
+    },
     report: function (b) {
       var id = b.getAttribute('data-m');
       var f = document.querySelector('[data-reportform="' + id + '"]');
@@ -872,6 +924,11 @@
         toast(r.ok ? 'Declined.' : r.error, r.ok ? 'ok' : 'err'); if (r.ok) reload();
       });
     },
+    withdraw: function (b) {
+      post({ fn: 'withdraw', challenge_id: b.getAttribute('data-c') }).then(function (r) {
+        toast(r.ok ? (r.message || 'Withdrawn.') : r.error, r.ok ? 'ok' : 'err'); if (r.ok) reload();
+      });
+    },
     approve: function (b) { staffAct({ fn: 'approve', comp: b.getAttribute('data-c'), participant_id: b.getAttribute('data-p') }); },
     reject: function (b) { staffAct({ fn: 'reject', comp: b.getAttribute('data-c'), participant_id: b.getAttribute('data-p') }); },
     setstatus: function (b) { staffAct({ fn: 'setstatus', comp: b.getAttribute('data-c'), status: b.getAttribute('data-v') }); },
@@ -907,6 +964,15 @@
       var body = { fn: 'participant_set', participant_id: id, status: f.status.value };
       if (f.pos) body.position = f.pos.value;
       staffAct(body);
+    },
+    modAwaySet: function (b) {
+      var id = b.getAttribute('data-p');
+      var f = document.getElementById('af_' + id);
+      if (!f.d.value) { toast('Pick a return date', 'err'); return; }
+      staffAct({ fn: 'away_set', participant_id: id, until: f.d.value });
+    },
+    modAwayClear: function (b) {
+      staffAct({ fn: 'away_set', participant_id: b.getAttribute('data-p'), until: '' });
     },
     partAdd: function (b) {
       var f = document.getElementById('paF');
