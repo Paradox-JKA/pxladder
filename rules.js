@@ -74,7 +74,7 @@
   P.ladder = function (cfg, comp) {
     cfg = cfg || {}; comp = comp || {};
     var range = cfg.challenge_range || 4, acc = cfg.accept_days || 3, idle = cfg.inactivity_days || 10,
-      rem = cfg.rematch_hours || 48, lcd = cfg.loss_cooldown_hours || 12, dcd = cfg.defense_cooldown_hours || 6,
+      rem = cfg.rematch_hours || 48,
       acf = cfg.auto_confirm_hours || 24, bo = comp.best_of || 3, ts = comp.target_score || 10,
       mrd = cfg.ladder_match_reminder_days || 3, mdd = cfg.ladder_match_deadline_days || 7,
       tl = cfg.match_time_limit_minutes || 0, noSw = cfg.no_saber_switching === 'TRUE' || cfg.no_saber_switching === true,
@@ -92,9 +92,7 @@
         'You may challenge any player up to ' + range + ' positions above you. Challenges only go up.',
         'One challenge at a time — you cannot stack them or be in two at once.',
         'The challenged player has ' + acc + ' days to accept. No response, or a decline, is an automatic forfeit — the challenger takes their position.',
-        'After you lose a challenge, wait ' + lcd + ' hours before starting another.',
-        'After you successfully defend, you are safe from new challenges for ' + dcd + ' hours.',
-        'No instant rematches — ' + rem + ' hours, or play someone else first, before re-challenging the same player.'
+        'No instant rematches — ' + rem + ' hours, or play someone else first, before re-challenging the same player. You can still challenge someone else right away.'
       ] },
       { h: 'Matches', lines: [
         'Best of ' + bo + ', duels to ' + ts + '. Played on Paradox servers.'
