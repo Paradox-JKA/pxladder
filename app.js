@@ -464,19 +464,21 @@
   function ladderChallengeUI(L) {
     var html = '<h2>' + esc(L.comp_name || 'Ladder') + ' — you are #' + L.position + '</h2>';
     html += awayControl(L);
-    if ((L.my_challenges || []).length) {
-      html += '<div class="panel">' + L.my_challenges.map(function (x) {
-        if (x.incoming && x.state === 'pending') {
+    // Only PENDING challenges belong here. Once accepted, it's a match to play —
+    // it shows under "Your matches" with a report form, so we don't repeat it (and
+    // the accept-by countdown is meaningless after acceptance).
+    var pendingCh = (L.my_challenges || []).filter(function (x) { return x.state === 'pending'; });
+    if (pendingCh.length) {
+      html += '<div class="panel">' + pendingCh.map(function (x) {
+        if (x.incoming) {
           return '<div class="match-card"><div class="vs"><b>' + esc(x.challenger) + '</b> challenged you</div>' +
             '<p class="hint">Respond within ' + until(x.accept_by) + ' or auto-forfeit.</p>' +
             '<div class="inline-actions"><button class="small" data-act="accept" data-c="' + x.id + '">Accept</button>' +
             '<button class="small ghost" data-act="decline" data-c="' + x.id + '">Decline (cede position)</button></div></div>';
         }
-        var canWithdraw = !x.incoming && x.state === 'pending';
-        return '<div class="match-card"><div class="vs">' + (x.incoming ? 'From <b>' + esc(x.challenger) + '</b>' : 'You challenged <b>' + esc(x.defender) + '</b>') +
-          ' — ' + esc(x.state) + '</div><p class="hint">accept-by ' + until(x.accept_by) + '</p>' +
-          (canWithdraw ? '<div class="inline-actions"><button class="small ghost" data-act="withdraw" data-c="' + x.id + '">Withdraw</button></div>' : '') +
-          '</div>';
+        return '<div class="match-card"><div class="vs">You challenged <b>' + esc(x.defender) + '</b> — waiting for a response</div>' +
+          '<p class="hint">If they don’t accept in ' + until(x.accept_by) + ', you win by forfeit and take their spot.</p>' +
+          '<div class="inline-actions"><button class="small ghost" data-act="withdraw" data-c="' + x.id + '">Withdraw</button></div></div>';
       }).join('') + '</div>';
     }
     html += '<h3 style="color:var(--muted)">Who you can challenge</h3>';
