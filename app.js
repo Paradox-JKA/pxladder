@@ -451,9 +451,14 @@
     return '<div class="match-card">' + head + (m.server ? '<p class="hint">Server: ' + esc(m.server) + '</p>' : '') + body + '</div>';
   }
   function reportForm(m) {
-    return '<form data-reportform="' + m.id + '"><div class="row2">' +
-      '<div><label>' + esc(m.slot_a) + ' score</label><input name="sa" type="number" min="0" required></div>' +
-      '<div><label>' + esc(m.slot_b) + ' score</label><input name="sb" type="number" min="0" required></div></div>' +
+    return '<form data-reportform="' + m.id + '">' +
+      '<label>Who won?</label><select name="winner">' +
+      '<option value="">— pick the winner —</option>' +
+      '<option value="a">' + esc(m.slot_a) + '</option>' +
+      '<option value="b">' + esc(m.slot_b) + '</option></select>' +
+      '<div class="row2">' +
+      '<div><label>Winner’s rounds</label><input name="ws" type="number" min="1" required></div>' +
+      '<div><label>Loser’s rounds</label><input name="ls" type="number" min="0" required></div></div>' +
       '<label>Screenshot / demo link (optional unless disputed)</label><input name="ev" type="url" placeholder="https://...">' +
       '<button class="small" data-act="report" data-m="' + m.id + '">Report result</button></form>';
   }
@@ -755,14 +760,25 @@
           '<td>' + esc(m.slot_a || 'TBD') + ' vs ' + esc(m.slot_b || 'TBD') + '</td>' +
           '<td>' + stateTag(m.state) + '</td>' +
           '<td class="num">' + (m.score_a !== '' ? m.score_a + '–' + m.score_b : '') + '</td>' +
-          '<td class="num">' + (done ? '' : '<button class="small ghost" data-act="matchEdit" data-m="' + m.id + '">edit</button>') + '</td></tr>' +
+          '<td class="num">' + (done
+            ? '<button class="small ghost" data-act="reverseOpen" data-m="' + m.id + '">reverse</button>'
+            : '<button class="small ghost" data-act="matchEdit" data-m="' + m.id + '">edit</button>') + '</td></tr>' +
           '<tr id="me_' + m.id + '" hidden><td colspan="5"><form data-matchform="' + m.id + '"><div class="row3">' +
           '<div><label>' + esc(m.slot_a || 'A') + '</label><input name="sa" type="number" min="0" value="' + esc(m.score_a || '') + '"></div>' +
           '<div><label>' + esc(m.slot_b || 'B') + '</label><input name="sb" type="number" min="0" value="' + esc(m.score_b || '') + '"></div>' +
           '<div><label>State</label><select name="state">' + MST.map(function (v) { return '<option' + (m.state === v ? ' selected' : '') + '>' + v + '</option>'; }).join('') + '</select></div>' +
           '</div><label>Server</label><input name="server" value="' + esc(m.server || '') + '">' +
           '<div class="inline-actions"><button class="small" data-act="matchSave" data-m="' + m.id + '">Save</button>' +
-          '<button class="small ghost" data-act="matchSave" data-m="' + m.id + '" data-settle="1">Save &amp; settle</button></div></form></td></tr>';
+          '<button class="small ghost" data-act="matchSave" data-m="' + m.id + '" data-settle="1">Save &amp; settle</button></div></form></td></tr>' +
+          (done ? '<tr id="rv_' + m.id + '" hidden><td colspan="5"><form data-revform="' + m.id + '">' +
+            '<p class="hint">Undoes this result — reverses the record and (if nothing moved since) the ladder positions.</p>' +
+            '<label>Corrected winner <span class="hint">(leave blank to just void it)</span></label>' +
+            '<select name="w"><option value="">— void, no re-rule —</option>' +
+            '<option value="a">' + esc(m.slot_a || 'A') + '</option><option value="b">' + esc(m.slot_b || 'B') + '</option></select>' +
+            '<div class="row2"><div><label>Winner’s rounds</label><input name="ws" type="number" min="0"></div>' +
+            '<div><label>Loser’s rounds</label><input name="ls" type="number" min="0"></div></div>' +
+            '<button class="small" data-act="reverseMatch" data-m="' + m.id + '" data-a="' + esc(m.pa_id) + '" data-b="' + esc(m.pb_id) + '">Reverse result</button>' +
+            '</form></td></tr>' : '');
       }).join('') + '</tbody></table></div>';
 
     var evs = r.events || [];
@@ -891,7 +907,12 @@
     report: function (b) {
       var id = b.getAttribute('data-m');
       var f = document.querySelector('[data-reportform="' + id + '"]');
-      post({ fn: 'report', match_id: id, score_a: f.sa.value, score_b: f.sb.value, evidence_url: f.ev.value.trim() })
+      var who = f.winner.value, ws = parseInt(f.ws.value, 10), ls = parseInt(f.ls.value, 10);
+      if (!who) { toast('Pick who won', 'err'); return; }
+      if (isNaN(ws) || isNaN(ls) || ws <= ls) { toast('Winner’s rounds must be higher than the loser’s', 'err'); return; }
+      // translate "winner + rounds" back into slot_a / slot_b scores for the API
+      var sa = who === 'a' ? ws : ls, sb = who === 'a' ? ls : ws;
+      post({ fn: 'report', match_id: id, score_a: sa, score_b: sb, evidence_url: f.ev.value.trim() })
         .then(function (r) { toast(r.ok ? (r.message || 'Reported.') : r.error, r.ok ? 'ok' : 'err'); if (r.ok) reload(); });
     },
     confirm: function (b) {
@@ -998,6 +1019,28 @@
     matchEdit: function (b) {
       var row = document.getElementById('me_' + b.getAttribute('data-m'));
       if (row) row.hidden = !row.hidden;
+    },
+    reverseOpen: function (b) {
+      var row = document.getElementById('rv_' + b.getAttribute('data-m'));
+      if (row) row.hidden = !row.hidden;
+    },
+    reverseMatch: function (b) {
+      var id = b.getAttribute('data-m');
+      var f = document.querySelector('[data-revform="' + id + '"]');
+      var who = f.w.value;
+      var body = { fn: 'reverse_match', match_id: id };
+      if (who) {
+        var ws = parseInt(f.ws.value, 10), ls = parseInt(f.ls.value, 10);
+        if (isNaN(ws) || isNaN(ls) || ws <= ls) { toast('Winner’s rounds must be higher than the loser’s', 'err'); return; }
+        body.winner_id = who === 'a' ? b.getAttribute('data-a') : b.getAttribute('data-b');
+        body.score_a = who === 'a' ? ws : ls;
+        body.score_b = who === 'a' ? ls : ws;
+      }
+      if (!confirm(who ? 'Reverse this result and re-rule it?' : 'Reverse and void this result?')) return;
+      post(body).then(function (r) {
+        toast(r.ok ? (r.message || 'Reversed.') : r.error, r.ok ? 'ok' : 'err');
+        if (r.ok) reload();
+      });
     },
     matchSave: function (b) {
       var id = b.getAttribute('data-m');
