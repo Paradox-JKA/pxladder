@@ -765,6 +765,14 @@
           '<button class="small ghost" data-act="matchSave" data-m="' + m.id + '" data-settle="1">Save &amp; settle</button></div></form></td></tr>';
       }).join('') + '</tbody></table></div>';
 
+    var evs = r.events || [];
+    html += '<h2>Recent activity</h2>';
+    html += evs.length ? '<details class="panel"><summary>' + evs.length + ' recent events (challenges, results, position changes, decay)</summary>' +
+      '<table style="margin-top:10px"><tbody>' + evs.map(function (e) {
+        return '<tr><td class="hint" style="white-space:nowrap">' + esc(String(e.ts).slice(0, 16).replace('T', ' ')) + '</td>' +
+          '<td class="hint">' + esc(e.action) + '</td><td>' + esc(e.detail) + '</td></tr>';
+      }).join('') + '</tbody></table></details>' : '<div class="panel hint">No activity logged yet.</div>';
+
     html += '<details class="panel"><summary style="color:var(--accent)">Danger zone</summary>' +
       '<p class="hint">Deleting removes the competition and all its participants, matches and challenges. The ladder cannot be deleted.</p>' +
       '<form id="delF"><label>Type <code>' + esc(c.slug) + '</code> to confirm</label><input name="confirm">' +
