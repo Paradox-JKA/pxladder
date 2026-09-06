@@ -439,7 +439,9 @@
       body = reportForm(m);
     } else if (m.state === 'reported') {
       if (myIds.indexOf(m.reported_by) >= 0) {
-        body = '<p class="hint">You reported ' + esc(m.score_a + '–' + m.score_b) + '. Waiting for ' + esc(oppName) + ' to confirm.</p>';
+        body = '<p class="hint">You reported ' + esc(m.slot_a + ' ' + m.score_a + ' – ' + m.score_b + ' ' + m.slot_b) +
+          '. Waiting for ' + esc(oppName) + ' to confirm.</p>' +
+          '<details><summary class="hint">Reported it wrong?</summary><div style="margin-top:8px">' + reportForm(m) + '</div></details>';
       } else {
         body = '<p>Opponent reported <b>' + esc(m.slot_a + ' ' + m.score_a + ' – ' + m.score_b + ' ' + m.slot_b) + '</b>.</p>' +
           '<div class="inline-actions"><button class="small" data-act="confirm" data-m="' + m.id + '">Confirm</button>' +
