@@ -910,6 +910,9 @@
       var who = f.winner.value, ws = parseInt(f.ws.value, 10), ls = parseInt(f.ls.value, 10);
       if (!who) { toast('Pick who won', 'err'); return; }
       if (isNaN(ws) || isNaN(ls) || ws <= ls) { toast('Winner’s rounds must be higher than the loser’s', 'err'); return; }
+      var wName = who === 'a' ? f.winner.options[1].text : f.winner.options[2].text;
+      var lName = who === 'a' ? f.winner.options[2].text : f.winner.options[1].text;
+      if (!confirm('Report: ' + wName + ' beat ' + lName + ' ' + ws + '–' + ls + '?\n\nThis stands once your opponent confirms.')) return;
       // translate "winner + rounds" back into slot_a / slot_b scores for the API
       var sa = who === 'a' ? ws : ls, sb = who === 'a' ? ls : ws;
       post({ fn: 'report', match_id: id, score_a: sa, score_b: sb, evidence_url: f.ev.value.trim() })
