@@ -434,21 +434,30 @@
     var cName = m.comp ? m.comp.name : '';
     var head = '<div class="vs"><b>' + esc(myName) + '</b> vs <b>' + esc(oppName) + '</b> ' + stateTag(m.state) +
       (cName ? ' <span class="hint">' + esc(cName) + '</span>' : '') + '</div>';
-    var body = '';
+    var clock = '';
+    if (m.state === 'ready' && m.play_by) {
+      var over = Date.parse(m.play_by) < Date.now();
+      clock = over
+        ? '<p class="msg err" style="margin:4px 0">⏱️ Overdue — play and report ASAP. Past the deadline it’s ' + esc(m.play_by_penalty || 'an organizer stepping in') + '.</p>'
+        : '<p class="hint" style="margin:4px 0">⏱️ Play &amp; report within ' + until(m.play_by) + ' — otherwise ' + esc(m.play_by_penalty || 'an organizer steps in') + '.</p>';
+    } else if (m.state === 'reported' && m.confirm_by && myIds.indexOf(m.reported_by) < 0) {
+      clock = '<p class="hint" style="margin:4px 0">Auto-confirms in ' + until(m.confirm_by) + ' if you don’t respond.</p>';
+    }
+    var body = clock;
     if (m.state === 'ready') {
-      body = reportForm(m);
+      body += reportForm(m);
     } else if (m.state === 'reported') {
       if (myIds.indexOf(m.reported_by) >= 0) {
-        body = '<p class="hint">You reported ' + esc(m.slot_a + ' ' + m.score_a + ' – ' + m.score_b + ' ' + m.slot_b) +
+        body += '<p class="hint">You reported ' + esc(m.slot_a + ' ' + m.score_a + ' – ' + m.score_b + ' ' + m.slot_b) +
           '. Waiting for ' + esc(oppName) + ' to confirm.</p>' +
           '<details><summary class="hint">Reported it wrong?</summary><div style="margin-top:8px">' + reportForm(m) + '</div></details>';
       } else {
-        body = '<p>Opponent reported <b>' + esc(m.slot_a + ' ' + m.score_a + ' – ' + m.score_b + ' ' + m.slot_b) + '</b>.</p>' +
+        body += '<p>Opponent reported <b>' + esc(m.slot_a + ' ' + m.score_a + ' – ' + m.score_b + ' ' + m.slot_b) + '</b>.</p>' +
           '<div class="inline-actions"><button class="small" data-act="confirm" data-m="' + m.id + '">Confirm</button>' +
           '<button class="small ghost" data-act="disputeOpen" data-m="' + m.id + '">Dispute</button></div><div id="disp_' + m.id + '"></div>';
       }
     } else if (m.state === 'disputed') {
-      body = msgBox('Under review by an organizer. Add your screenshot / demo link:', 'info') + evidenceForm(m);
+      body += msgBox('Under review by an organizer. Add your screenshot / demo link:', 'info') + evidenceForm(m);
     }
     return '<div class="match-card">' + head + (m.server ? '<p class="hint">Server: ' + esc(m.server) + '</p>' : '') + body + '</div>';
   }
