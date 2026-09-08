@@ -86,7 +86,10 @@
   function stopPoll() { if (pollTimer) { clearInterval(pollTimer); pollTimer = null; } }
   function startPoll(fn, ms) { stopPoll(); pollTimer = setInterval(fn, ms || 45000); }
   function nav(items) {
-    items = items.filter(Boolean).concat([{ label: 'Rules', href: 'rules.html' }]);
+    items = items.filter(Boolean).concat([
+      { label: 'Servers', href: '?view=servers', on: /[?&]view=servers/.test(location.search) },
+      { label: 'Rules', href: 'rules.html' },
+    ]);
     navEl.innerHTML = items.map(function (i) {
       return '<a class="pill' + (i.on ? ' on' : '') + '" href="' + esc(i.href) + '">' + esc(i.label) + '</a>';
     }).join('');
@@ -124,6 +127,7 @@
         return SESSION.staff_role ? renderAdmin() : renderDashboard();
       });
     }
+    if (view === 'servers') return renderServers();     // public, no sign-in needed
     if (comp && view === 'join') return renderJoin(comp);
     if (comp) return renderCompetition(comp);          // public, no sign-in needed
     if (view === 'register') return renderRegister();
@@ -176,6 +180,47 @@
         if (k) { lsSet(k); location.search = ''; }
       });
     });
+  }
+
+  // ---------------------------------------------------------------- servers (public)
+
+  function renderServers() {
+    nav([{ label: 'Competitions', href: '?' }]);
+    setStatus('');
+    load();
+    startPoll(load, 30000);
+    function load() {
+      get({ fn: 'servers' }).then(function (r) {
+        var servers = (r && r.servers) || [];
+        var updated = r && r.updated ? ' <span class="hint">· list updated ' + ago(r.updated * 1000) + '</span>' : '';
+        var head = '<h1>Paradox servers' + updated + '</h1>' +
+          '<p class="sub">Live status from the JKHub master list. Anyone can join — no account, no Discord.</p>';
+        if (r && r.error) { app.innerHTML = head + msgBox(r.error, 'err'); return; }
+        if (!servers.length) {
+          app.innerHTML = head + '<div class="panel hint">No Paradox servers are responding right now. They may be restarting — check back in a minute.</div>';
+          return;
+        }
+        app.innerHTML = head + '<div class="cards">' + servers.map(serverCard).join('') + '</div>';
+      });
+    }
+  }
+  function serverCard(s) {
+    var addr = s.ip + ':' + s.port;
+    var full = s.max ? Math.round((s.players / s.max) * 100) : 0;
+    var botNote = s.bots ? ' <span class="hint">(+' + s.bots + ' bot' + (s.bots === 1 ? '' : 's') + ')</span>' : '';
+    var names = (s.names || []).length ? '<div class="hint" style="margin-top:4px">' + s.names.map(esc).join(', ') + '</div>' : '';
+    return '<div class="card" style="cursor:default">' +
+      '<div class="t">' + esc(s.name) + '</div>' +
+      '<div class="m">' + esc(s.gametype) + ' · ' + esc(s.map) + (s.location ? ' · ' + esc(s.location) : '') + '</div>' +
+      (s.mod ? '<div class="m hint">' + esc(s.mod) + '</div>' : '') +
+      '<div style="margin:8px 0 4px">Players: ' + s.players + ' / ' + s.max + botNote + '</div>' +
+      '<div style="height:5px;background:var(--border);border-radius:3px;overflow:hidden"><div style="height:100%;width:' + full + '%;background:var(--accent)"></div></div>' +
+      names +
+      '<div class="inline-actions" style="margin-top:12px">' +
+      '<button class="small" data-act="copyConnect" data-copy="/connect ' + esc(addr) + '">Copy /connect</button>' +
+      '<a class="pill" href="steam://run/6020//+connect ' + esc(addr) + '">Steam</a>' +
+      '<a class="pill" href="eternaljk://' + esc(addr) + '">EternalJK</a>' +
+      '</div><div class="hint" style="margin-top:6px">' + esc(addr) + '</div></div>';
   }
 
   function renderRegister() {
@@ -843,6 +888,7 @@
       box.textContent = KEY(); box.hidden = false; b.remove();
     },
     copyMyKey: function (b) { copyText(KEY(), b); },
+    copyConnect: function (b) { copyText(b.getAttribute('data-copy'), b); },
     logout: function () {
       if (!confirm('Log out on this device? Make sure your key is saved — you’ll need it to get back in.')) return;
       lsClear(); location.search = '';
