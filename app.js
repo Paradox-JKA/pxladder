@@ -822,7 +822,7 @@
           '<tr id="me_' + m.id + '" hidden><td colspan="5"><form data-matchform="' + m.id + '"><div class="row3">' +
           '<div><label>' + esc(m.slot_a || 'A') + '</label><input name="sa" type="number" min="0" value="' + esc(m.score_a || '') + '"></div>' +
           '<div><label>' + esc(m.slot_b || 'B') + '</label><input name="sb" type="number" min="0" value="' + esc(m.score_b || '') + '"></div>' +
-          '<div><label>State</label><select name="state">' + MST.map(function (v) { return '<option' + (m.state === v ? ' selected' : '') + '>' + v + '</option>'; }).join('') + '</select></div>' +
+          '<div><label>State</label><select name="state">' + MST.map(function (v) { return '<option' + (m.state === v ? ' selected' : '') + '>' + v + '</option>'; }).join('') + '<option value="cancel">— cancel, no result —</option></select></div>' +
           '</div><label>Server</label><input name="server" value="' + esc(m.server || '') + '">' +
           '<div class="inline-actions"><button class="small" data-act="matchSave" data-m="' + m.id + '">Save</button>' +
           '<button class="small ghost" data-act="matchSave" data-m="' + m.id + '" data-settle="1">Save &amp; settle</button></div></form></td></tr>' +
@@ -1105,6 +1105,12 @@
     matchSave: function (b) {
       var id = b.getAttribute('data-m');
       var f = document.querySelector('[data-matchform="' + id + '"]');
+      if (f.state.value === 'cancel') {
+        var reason = prompt('Cancel this challenge? No result is recorded and nobody changes position.\n\nOptional reason (shown in the log and Discord):', '');
+        if (reason === null) return;
+        staffAct({ fn: 'match_set', match_id: id, state: 'cancel', reason: reason.trim() });
+        return;
+      }
       staffAct({
         fn: 'match_set', match_id: id, score_a: f.sa.value, score_b: f.sb.value,
         state: f.state.value, server: f.server.value.trim(), settle: b.getAttribute('data-settle') ? 1 : ''
