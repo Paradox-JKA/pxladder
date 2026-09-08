@@ -194,7 +194,7 @@
         var servers = (r && r.servers) || [];
         var updated = r && r.updated ? ' <span class="hint">· list updated ' + ago(r.updated * 1000) + '</span>' : '';
         var head = '<h1>Paradox servers' + updated + '</h1>' +
-          '<p class="sub">Live status from the JKHub master list. Anyone can join — no account, no Discord.</p>';
+          '<p class="sub">Status from the JKHub master list. Anyone can join — no account, no Discord.</p>';
         if (r && r.error) { app.innerHTML = head + msgBox(r.error, 'err'); return; }
         if (!servers.length) {
           app.innerHTML = head + '<div class="panel hint">No Paradox servers are responding right now. They may be restarting — check back in a minute.</div>';
@@ -217,9 +217,9 @@
       '<div style="height:5px;background:var(--border);border-radius:3px;overflow:hidden"><div style="height:100%;width:' + full + '%;background:var(--accent)"></div></div>' +
       names +
       '<div class="inline-actions" style="margin-top:12px">' +
-      '<button class="small" data-act="copyConnect" data-copy="/connect ' + esc(addr) + '">Copy /connect</button>' +
-      '<a class="pill" href="steam://run/6020//+connect ' + esc(addr) + '">Steam</a>' +
-      '<a class="pill" href="eternaljk://' + esc(addr) + '">EternalJK</a>' +
+      '<button class="btn" data-act="copyConnect" data-copy="/connect ' + esc(addr) + '">Copy /connect</button>' +
+      '<a class="btn ghost" href="steam://run/6020//+connect ' + esc(addr) + '">Steam</a>' +
+      '<a class="btn ghost" href="eternaljk://' + esc(addr) + '">EternalJK</a>' +
       '</div><div class="hint" style="margin-top:6px">' + esc(addr) + '</div></div>';
   }
 
