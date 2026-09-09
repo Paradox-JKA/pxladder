@@ -192,29 +192,38 @@
     function load() {
       get({ fn: 'servers' }).then(function (r) {
         var servers = (r && r.servers) || [];
+        var stale = !!(r && r.stale);
         var updated = r && r.updated ? ' <span class="hint">· list updated ' + ago(r.updated * 1000) + '</span>' : '';
         var head = '<h1>Paradox servers' + updated + '</h1>' +
           '<p class="sub">Status from the JKHub master list. Anyone can join — no account, no Discord.</p>';
         if (r && r.error) { app.innerHTML = head + msgBox(r.error, 'err'); return; }
+        var warn = stale
+          ? msgBox('JKHub’s server list ' + (r && r.updated ? 'hasn’t refreshed in ' + ago(r.updated * 1000).replace(' ago', '') : 'is unavailable') +
+              ' — player counts below may be out of date. The join links still work.', 'err')
+          : '';
         if (!servers.length) {
-          app.innerHTML = head + '<div class="panel hint">No Paradox servers are responding right now. They may be restarting — check back in a minute.</div>';
+          app.innerHTML = head + warn + '<div class="panel hint">No Paradox servers are responding right now. They may be restarting — check back in a minute.</div>';
           return;
         }
-        app.innerHTML = head + '<div class="cards">' + servers.map(serverCard).join('') + '</div>';
+        app.innerHTML = head + warn + '<div class="cards">' + servers.map(function (s) { return serverCard(s, stale, r.updated); }).join('') + '</div>';
       });
     }
   }
-  function serverCard(s) {
+  function serverCard(s, stale, updatedSec) {
     var addr = s.ip + ':' + s.port;
     var full = s.max ? Math.round((s.players / s.max) * 100) : 0;
     var botNote = s.bots ? ' <span class="hint">(+' + s.bots + ' bot' + (s.bots === 1 ? '' : 's') + ')</span>' : '';
-    var names = (s.names || []).length ? '<div class="hint" style="margin-top:4px">' + s.names.map(esc).join(', ') + '</div>' : '';
+    var names = (!stale && (s.names || []).length) ? '<div class="hint" style="margin-top:4px">' + s.names.map(esc).join(', ') + '</div>' : '';
+    var playerLine = stale
+      ? '<div style="margin:8px 0 4px" class="hint">Players: last known ' + s.players + ' / ' + s.max +
+          (updatedSec ? ' (' + ago(updatedSec * 1000) + ')' : '') + '</div>'
+      : '<div style="margin:8px 0 4px">Players: ' + s.players + ' / ' + s.max + botNote + '</div>' +
+          '<div style="height:5px;background:var(--border);border-radius:3px;overflow:hidden"><div style="height:100%;width:' + full + '%;background:var(--accent)"></div></div>';
     return '<div class="card" style="cursor:default">' +
       '<div class="t">' + esc(s.name) + '</div>' +
       '<div class="m">' + esc(s.gametype) + ' · ' + esc(s.map) + (s.location ? ' · ' + esc(s.location) : '') + '</div>' +
       (s.mod ? '<div class="m hint">' + esc(s.mod) + '</div>' : '') +
-      '<div style="margin:8px 0 4px">Players: ' + s.players + ' / ' + s.max + botNote + '</div>' +
-      '<div style="height:5px;background:var(--border);border-radius:3px;overflow:hidden"><div style="height:100%;width:' + full + '%;background:var(--accent)"></div></div>' +
+      playerLine +
       names +
       '<div class="inline-actions" style="margin-top:12px">' +
       '<button class="btn" data-act="copyConnect" data-copy="/connect ' + esc(addr) + '">Copy /connect</button>' +
@@ -547,9 +556,13 @@
     else if (!L.can_challenge) html += '<div class="panel hint">You have an active challenge right now.</div>';
     else if (!(L.challengeable || []).length) html += '<div class="panel hint">Nobody in range right now.</div>';
     else html += '<div class="panel"><table><tbody>' + L.challengeable.map(function (p) {
-      return '<tr><td class="rank">' + p.position + '</td><td>' + esc(p.ingame_name) + '</td>' +
+      var locked = p.rematch_until && Date.parse(p.rematch_until) > Date.now();
+      var cell = locked
+        ? '<span class="hint" title="You challenged them last time — you can rematch once this clears.">rematch locked · ' + until(p.rematch_until) + '</span>'
+        : '<button class="small" data-act="challenge" data-p="' + p.id + '">Challenge</button>';
+      return '<tr' + (locked ? ' style="opacity:.55"' : '') + '><td class="rank">' + p.position + '</td><td>' + esc(p.ingame_name) + '</td>' +
         '<td class="num">' + p.wins + '–' + p.losses + '</td>' +
-        '<td class="num"><button class="small" data-act="challenge" data-p="' + p.id + '">Challenge</button></td></tr>';
+        '<td class="num">' + cell + '</td></tr>';
     }).join('') + '</tbody></table></div>';
     return html;
   }
@@ -822,7 +835,7 @@
           '<tr id="me_' + m.id + '" hidden><td colspan="5"><form data-matchform="' + m.id + '"><div class="row3">' +
           '<div><label>' + esc(m.slot_a || 'A') + '</label><input name="sa" type="number" min="0" value="' + esc(m.score_a || '') + '"></div>' +
           '<div><label>' + esc(m.slot_b || 'B') + '</label><input name="sb" type="number" min="0" value="' + esc(m.score_b || '') + '"></div>' +
-          '<div><label>State</label><select name="state">' + MST.map(function (v) { return '<option' + (m.state === v ? ' selected' : '') + '>' + v + '</option>'; }).join('') + '</select></div>' +
+          '<div><label>State</label><select name="state">' + MST.map(function (v) { return '<option' + (m.state === v ? ' selected' : '') + '>' + v + '</option>'; }).join('') + '<option value="cancel">— cancel, no result —</option></select></div>' +
           '</div><label>Server</label><input name="server" value="' + esc(m.server || '') + '">' +
           '<div class="inline-actions"><button class="small" data-act="matchSave" data-m="' + m.id + '">Save</button>' +
           '<button class="small ghost" data-act="matchSave" data-m="' + m.id + '" data-settle="1">Save &amp; settle</button></div></form></td></tr>' +
@@ -1105,6 +1118,12 @@
     matchSave: function (b) {
       var id = b.getAttribute('data-m');
       var f = document.querySelector('[data-matchform="' + id + '"]');
+      if (f.state.value === 'cancel') {
+        var reason = prompt('Cancel this challenge? No result is recorded and nobody changes position.\n\nOptional reason (shown in the log and Discord):', '');
+        if (reason === null) return;
+        staffAct({ fn: 'match_set', match_id: id, state: 'cancel', reason: reason.trim() });
+        return;
+      }
       staffAct({
         fn: 'match_set', match_id: id, score_a: f.sa.value, score_b: f.sb.value,
         state: f.state.value, server: f.server.value.trim(), settle: b.getAttribute('data-settle') ? 1 : ''
