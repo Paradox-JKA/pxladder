@@ -192,32 +192,36 @@
     function load() {
       get({ fn: 'servers' }).then(function (r) {
         var servers = (r && r.servers) || [];
-        var stale = !!(r && r.stale);
-        var updated = r && r.updated ? ' <span class="hint">· list updated ' + ago(r.updated * 1000) + '</span>' : '';
-        var head = '<h1>Paradox servers' + updated + '</h1>' +
-          '<p class="sub">Status from the JKHub master list. Anyone can join — no account, no Discord.</p>';
+        var cacheStale = !!(r && r.stale && r.source === 'jkhub-cache');
+        var meta = cacheStale
+          ? ' <span class="hint">· backup list, updated ' + ago(r.updated * 1000) + '</span>'
+          : ' <span class="hint">· live · <a href="#" data-act="serversRefresh">refresh</a></span>';
+        var head = '<h1>Paradox servers' + meta + '</h1>' +
+          '<p class="sub">Status from the JKHub master server list. Anyone can join — no account, no Discord.</p>';
         if (r && r.error) { app.innerHTML = head + msgBox(r.error, 'err'); return; }
-        var warn = stale
-          ? msgBox('JKHub’s server list ' + (r && r.updated ? 'hasn’t refreshed in ' + ago(r.updated * 1000).replace(' ago', '') : 'is unavailable') +
-              ' — player counts below may be out of date. The join links still work.', 'err')
+        var warn = cacheStale
+          ? msgBox('The live JKHub list is unreachable, so this is the backup feed from ' +
+              ago(r.updated * 1000).replace(' ago', '') + ' ago — player counts may be out of date. The join links still work.', 'err')
           : '';
         if (!servers.length) {
           app.innerHTML = head + warn + '<div class="panel hint">No Paradox servers are responding right now. They may be restarting — check back in a minute.</div>';
           return;
         }
-        app.innerHTML = head + warn + '<div class="cards">' + servers.map(function (s) { return serverCard(s, stale, r.updated); }).join('') + '</div>';
+        app.innerHTML = head + warn + '<div class="cards">' + servers.map(function (s) { return serverCard(s, cacheStale, r.updated); }).join('') + '</div>';
       });
     }
+    ACTIONS.serversRefresh = function () { load(); };
   }
   function serverCard(s, stale, updatedSec) {
     var addr = s.ip + ':' + s.port;
     var full = s.max ? Math.round((s.players / s.max) * 100) : 0;
     var botNote = s.bots ? ' <span class="hint">(+' + s.bots + ' bot' + (s.bots === 1 ? '' : 's') + ')</span>' : '';
     var names = (!stale && (s.names || []).length) ? '<div class="hint" style="margin-top:4px">' + s.names.map(esc).join(', ') + '</div>' : '';
+    var cachedNote = (!stale && s.cached) ? ' <span class="hint" title="JKHub had no fresh reply from this server — last known count">· cached</span>' : '';
     var playerLine = stale
       ? '<div style="margin:8px 0 4px" class="hint">Players: last known ' + s.players + ' / ' + s.max +
           (updatedSec ? ' (' + ago(updatedSec * 1000) + ')' : '') + '</div>'
-      : '<div style="margin:8px 0 4px">Players: ' + s.players + ' / ' + s.max + botNote + '</div>' +
+      : '<div style="margin:8px 0 4px">Players: ' + s.players + ' / ' + s.max + botNote + cachedNote + '</div>' +
           '<div style="height:5px;background:var(--border);border-radius:3px;overflow:hidden"><div style="height:100%;width:' + full + '%;background:var(--accent)"></div></div>';
     return '<div class="card" style="cursor:default">' +
       '<div class="t">' + esc(s.name) + '</div>' +
