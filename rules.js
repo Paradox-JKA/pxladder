@@ -73,7 +73,7 @@
   /** Rules for the challenge ladder, from the global config block. */
   P.ladder = function (cfg, comp) {
     cfg = cfg || {}; comp = comp || {};
-    var range = cfg.challenge_range || 4, acc = cfg.accept_days || 3, idle = cfg.inactivity_days || 10,
+    var range = cfg.challenge_range || 4, topRange = cfg.top_challenge_range || 5, acc = cfg.accept_days || 3, idle = cfg.inactivity_days || 10,
       rem = cfg.rematch_hours || 48,
       acf = cfg.auto_confirm_hours || 24, bo = comp.best_of || 3, ts = comp.target_score || 10,
       mrd = cfg.ladder_match_reminder_days || 3, mdd = cfg.ladder_match_deadline_days || 7,
@@ -89,7 +89,8 @@
         'One ladder spot per person.'
       ] },
       { h: 'Challenging', lines: [
-        'You may challenge any player up to ' + range + ' positions above you. Challenges only go up.',
+        'You may challenge any player up to ' + range + ' positions above you. Challenges only go up — except for #1, below.',
+        'The #1 spot may also challenge DOWN, to the ' + topRange + ' nearest players below them. Win, and nothing changes — they were already on top. Lose, and the winner jumps straight to #1.',
         'One challenge at a time — you cannot stack them or be in two at once.',
         'The challenged player has ' + acc + ' days to accept. No response, or a decline, is an automatic forfeit — the challenger takes their position.',
         'Changed your mind before it’s accepted? Withdraw your challenge — no penalty, then challenge someone else.',
@@ -107,7 +108,8 @@
       ]) },
       { h: 'Moving up', lines: [
         'Win your challenge and you take that player’s position; everyone between shifts down one.',
-        'Lose and nothing changes — you just can’t re-challenge that same player for ' + rem + ' hours.'
+        'Lose and nothing changes — you just can’t re-challenge that same player for ' + rem + ' hours.',
+        'Exception: if #1 challenges down and loses, that’s reversed — the winner takes #1 outright, skipping everyone in between.'
       ] },
       { h: 'Going away', lines: [
         'Heading out for a while? Mark yourself Away with a return date up to ' + amd + ' days out (or ask an organizer to).',

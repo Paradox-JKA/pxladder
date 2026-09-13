@@ -550,12 +550,19 @@
             '<div class="inline-actions"><button class="small" data-act="accept" data-c="' + x.id + '">Accept</button>' +
             '<button class="small ghost" data-act="decline" data-c="' + x.id + '">Decline (cede position)</button></div></div>';
         }
+        var downForfeit = L.position === 1
+          ? 'If they don’t accept in ' + until(x.accept_by) + ', you win by forfeit — no position change, you’re already #1.'
+          : 'If they don’t accept in ' + until(x.accept_by) + ', you win by forfeit and take their spot.';
         return '<div class="match-card"><div class="vs">You challenged <b>' + esc(x.defender) + '</b> — waiting for a response</div>' +
-          '<p class="hint">If they don’t accept in ' + until(x.accept_by) + ', you win by forfeit and take their spot.</p>' +
+          '<p class="hint">' + downForfeit + '</p>' +
           '<div class="inline-actions"><button class="small ghost" data-act="withdraw" data-c="' + x.id + '">Withdraw</button></div></div>';
       }).join('') + '</div>';
     }
     html += '<h3 style="color:var(--muted)">Who you can challenge</h3>';
+    if (L.position === 1 && L.top_challenge_range) {
+      html += '<p class="hint">As #1 you can also challenge down, to the ' + L.top_challenge_range +
+        ' nearest players below you — win and nothing changes, lose and they take #1.</p>';
+    }
     if (L.away_until && Date.parse(L.away_until) > Date.now()) html += '<div class="panel hint">You’re marked away — clear it above to challenge.</div>';
     else if (!L.can_challenge) html += '<div class="panel hint">You have an active challenge right now.</div>';
     else if (!(L.challengeable || []).length) html += '<div class="panel hint">Nobody in range right now.</div>';
@@ -564,7 +571,8 @@
       var cell = locked
         ? '<span class="hint" title="You challenged them last time — you can rematch once this clears.">rematch locked · ' + until(p.rematch_until) + '</span>'
         : '<button class="small" data-act="challenge" data-p="' + p.id + '">Challenge</button>';
-      return '<tr' + (locked ? ' style="opacity:.55"' : '') + '><td class="rank">' + p.position + '</td><td>' + esc(p.ingame_name) + '</td>' +
+      var downTag = p.challenge_down ? ' <span class="hint" title="Challenging down — you gain nothing by winning, but they take #1 if they win.">↓</span>' : '';
+      return '<tr' + (locked ? ' style="opacity:.55"' : '') + '><td class="rank">' + p.position + '</td><td>' + esc(p.ingame_name) + downTag + '</td>' +
         '<td class="num">' + p.wins + '–' + p.losses + '</td>' +
         '<td class="num">' + cell + '</td></tr>';
     }).join('') + '</tbody></table></div>';
