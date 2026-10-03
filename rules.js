@@ -71,8 +71,85 @@
   };
 
   /** Rules for the challenge ladder, from the global config block. */
+  // Rules for a POINTS ladder. Numbers come from the live config, and the worked examples
+  // are computed with the same formula the server uses, so they can't drift from reality.
+  function pointsLadderRules(cfg, comp) {
+    var k = cfg.pts_k || 40, kNew = cfg.pts_kNew || 60, newN = cfg.pts_newMatches || 5, scale = cfg.pts_scale || 400,
+      start = cfg.pts_start || 1000, minWin = cfg.pts_minWin == null ? 2 : cfg.pts_minWin,
+      bonus = cfg.pts_defenseBonus == null ? 2 : cfg.pts_defenseBonus,
+      lim = cfg.pts_pairLimit || 2, win = cfg.pts_pairWindowHours || 48,
+      pen = cfg.pts_expiryPenalty == null ? 5 : cfg.pts_expiryPenalty, dec = cfg.pts_decayPerWeek || 8, floor = cfg.pts_decayFloor || 900,
+      acc = cfg.accept_days || 3, idle = cfg.inactivity_days || 10, acf = cfg.auto_confirm_hours || 24,
+      bo = comp.best_of || 3, ts = comp.target_score || 10,
+      mrd = cfg.ladder_match_reminder_days || 3, mdd = cfg.ladder_match_deadline_days || 7,
+      tl = cfg.match_time_limit_minutes || 0, noSw = cfg.no_saber_switching === 'TRUE' || cfg.no_saber_switching === true,
+      amd = cfg.away_max_days || 21, teamSize = comp.team_size || 0;
+    // gap = opponent's points minus yours
+    var ex = function (gap) {
+      var e = 1 / (1 + Math.pow(10, gap / scale));
+      return { w: Math.max(minWin, Math.round(k * (1 - e))), l: Math.round(k * e) };
+    };
+    var up = ex(300), even = ex(0), down = ex(-300);
+    return [
+      { h: 'Joining', lines: (teamSize > 0 ? [
+        'Teams of up to ' + teamSize + ' — one player registers for the whole team.',
+        'One ladder spot per team.'
+      ] : [
+        'Anyone with a Paradox account can join. You start with ' + start + ' points.',
+        'One ladder spot per person.'
+      ]) },
+      { h: 'Challenging', lines: [
+        'This is a points ladder: you may challenge ANY player, at any rank. There is no range limit.',
+        'One challenge at a time — you cannot stack them or be in two at once.',
+        'The challenged player has ' + acc + ' days to accept. No response, or a decline, counts as a forfeit — the challenger is awarded the win and the points.',
+        'Changed your mind before it’s accepted? Withdraw your challenge — no penalty.',
+        'Before you challenge, the site shows exactly what you would gain or lose.'
+      ] },
+      { h: 'How points work', lines: [
+        'Rank is simply your points, highest first.',
+        'Beating a higher-rated player is worth a lot; beating a lower-rated one is worth very little. Losing to a higher-rated player costs very little; losing to a lower-rated one costs a lot.',
+        'Example (a normal match): beat a player ' + 300 + ' points above you → +' + up.w + ' (lose to them → −' + up.l + '). Even match → +' + even.w + ' / −' + even.l + '. Beat a player 300 below → only +' + down.w + ' (lose to them → −' + down.l + ').',
+        'Your first ' + newN + ' matches count for more (up to ' + kNew + ' instead of ' + k + ') so you find your level quickly.',
+        'Successfully defending a challenge earns a flat +' + bonus + ' on top.',
+        'Points can never go below 0.'
+      ] },
+      { h: 'Rematch cooldown', lines: [
+        'You and another player may play each other at most ' + lim + ' times inside any ' + win + '-hour window, whoever challenges. After that you can play anyone else right away; the pair unlocks as the older matches age out.',
+        'Cancelled or withdrawn challenges and never-played matches do not count.'
+      ] },
+      { h: 'Matches', lines: [
+        'Best of ' + bo + ', duels to ' + ts + '. Played on Paradox servers.'
+      ].concat(tl ? ['Each duel is capped at ' + tl + ' minutes.'] : [])
+        .concat(noSw ? ['No switching saber styles or hilts mid-duel — lock your loadout for the whole match (ESL ruleset).'] : [])
+        .concat([
+        'The winner reports the score. The loser then confirms or disputes.',
+        'If the loser does nothing within ' + acf + ' hours, the result auto-confirms.',
+        'Once a challenge is accepted, play it. You’ll get a reminder after ' + mrd + ' days.',
+        'If it still hasn’t been played after ' + mdd + ' days, the challenge expires and BOTH players lose ' + pen + ' points — no fault-finding, so don’t accept a challenge you don’t intend to play.'
+      ]) },
+      { h: 'Going away', lines: [
+        'Heading out for a while? Mark yourself Away with a return date up to ' + amd + ' days out (or ask an organizer to).',
+        'While away you can’t be challenged or challenge anyone, and your points won’t decay.',
+        'Away lifts automatically on your return date, or clear it yourself when you’re back.'
+      ] },
+      { h: 'Disputes', lines: [
+        'Either player can dispute a reported result.',
+        'Both sides submit a screenshot or demo; an organizer rules on it.'
+      ] },
+      { h: 'Staying active', lines: [
+        'Play at least one match every ' + idle + ' days. Idle longer and you lose ' + dec + ' points per week until you play again (never below ' + floor + ' from inactivity alone).',
+        'Nobody is exempt — including #1 — because on a points ladder anyone can challenge anyone.'
+      ] },
+      { h: 'Seasons', lines: [
+        'The ladder runs in seasons. When an organizer closes a season, the final standings are saved to the season history and everyone’s record is cleared — points return to ' + start + '.',
+        'Past seasons and their champions stay on the ladder page.'
+      ] }
+    ];
+  }
+
   P.ladder = function (cfg, comp) {
     cfg = cfg || {}; comp = comp || {};
+    if (comp.ladder_mode === 'points') return pointsLadderRules(cfg, comp);
     var range = cfg.challenge_range || 4, topRange = cfg.top_challenge_range || 5, acc = cfg.accept_days || 3, idle = cfg.inactivity_days || 10,
       rem = cfg.rematch_hours || 48,
       acf = cfg.auto_confirm_hours || 24, bo = comp.best_of || 3, ts = comp.target_score || 10,
@@ -126,7 +203,8 @@
         'The #1 spot is exempt — you can only be challenged there, never initiate, so you can’t be dropped for inactivity.'
       ] },
       { h: 'Seasons', lines: [
-        'The ladder runs in seasons. At season end, standings are recorded and the ladder resets.'
+        'The ladder runs in seasons. When an organizer closes a season, the final standings are saved to the season history and everyone’s record is cleared. The current order carries over.',
+        'Past seasons and their champions stay on the ladder page.'
       ] }
     ];
   };

@@ -88,6 +88,7 @@
   function nav(items) {
     items = items.filter(Boolean).concat([
       { label: 'Servers', href: '?view=servers', on: /[?&]view=servers/.test(location.search) },
+      { label: 'Chat', href: '?view=chat', on: /[?&]view=chat/.test(location.search) },
       { label: 'Rules', href: 'rules.html' },
     ]);
     navEl.innerHTML = items.map(function (i) {
@@ -128,6 +129,7 @@
       });
     }
     if (view === 'servers') return renderServers();     // public, no sign-in needed
+    if (view === 'chat') { if (!KEY()) return renderHome('Sign in to use chat.'); return renderChat(); }
     if (comp && view === 'join') return renderJoin(comp);
     if (comp) return renderCompetition(comp);          // public, no sign-in needed
     if (view === 'register') return renderRegister();
@@ -146,14 +148,26 @@
     nav([{ label: 'Competitions', href: '?', on: true }]);
     setStatus('');
     get({ fn: 'list' }).then(function (r) {
-      var cards = (r.ok ? r.competitions : []).map(function (c) {
+      var hasPast = !!(r && r.past);
+      // finished tournaments move down to "Past events" (when the server sends them)
+      var cards = (r.ok ? r.competitions : []).filter(function (c) {
+        return !(hasPast && c.status === 'complete' && c.type !== 'ladder');
+      }).map(function (c) {
         return '<a class="card" href="?comp=' + esc(c.slug) + '"><div class="t">' + esc(c.name) +
           '</div><div class="m">' + esc(c.type.replace('_', ' ')) + ' · ' + esc(c.status) + '</div></a>';
       }).join('');
+      var pastHtml = (r.past || []).length
+        ? '<h2>Past events</h2><div class="panel"><table><tbody>' + r.past.map(function (p) {
+          var isSeason = p.kind === 'season';
+          return '<tr><td><a href="?comp=' + esc(p.slug) + '">' + esc(isSeason ? p.name + ' — ' + p.season : p.name) + '</a> ' +
+            '<span class="hint">' + esc(isSeason ? 'ladder season' : String(p.type).replace('_', ' ')) + '</span></td>' +
+            '<td>🏆 ' + esc(isSeason ? p.champion : (p.winner || '—')) + '</td>' +
+            '<td class="hint num">' + esc(String(p.date || '').slice(0, 10)) + '</td></tr>';
+        }).join('') + '</tbody></table></div>' : '';
       app.innerHTML =
         (note ? msgBox(note, 'info') : '') +
         '<h1>Paradox competitions</h1><p class="sub">Sign in to join events and report matches.</p>' +
-        '<div class="cards">' + cards + '</div>' +
+        '<div class="cards">' + cards + '</div>' + pastHtml +
         '<h2>Sign in</h2><div class="panel form-narrow">' +
         '<form id="loginF"><label>With your email</label>' +
         '<input name="email" type="email" placeholder="you@example.com" required>' +
@@ -231,9 +245,54 @@
       names +
       '<div class="inline-actions" style="margin-top:12px">' +
       '<button class="btn" data-act="copyConnect" data-copy="/connect ' + esc(addr) + '">Copy /connect</button>' +
-      '<a class="btn ghost" href="steam://run/6020//+connect ' + esc(addr) + '">Steam</a>' +
-      '<a class="btn ghost" href="eternaljk://' + esc(addr) + '">EternalJK</a>' +
-      '</div><div class="hint" style="margin-top:6px">' + esc(addr) + '</div></div>';
+      '<a class="btn ghost" href="steam://run/6020//+connect ' + esc(addr) + '" title="Opens Steam and joins this server">Steam ↗</a>' +
+      '<a class="btn ghost" href="eternaljk://' + esc(addr) + '" title="Opens EternalJK and joins this server">EternalJK ↗</a>' +
+      '</div><div class="hint" style="margin-top:6px">' + esc(addr) + ' · ↗ opens your game launcher</div></div>';
+  }
+
+  function renderChat() {
+    nav([{ label: 'Competitions', href: '?' }]);
+    setStatus('');
+    var room = 'general';
+    var seen = {};
+    var built = false;   // once the page shell exists, polling only ever touches #chatList —
+                          // never the input, or anyone mid-message loses what they typed.
+
+    function renderMsgs(msgs) {
+      msgs.forEach(function (m) { seen[m.id] = true; });
+      return msgs.map(function (m) {
+        var src = m.source === 'discord' ? ' <span class="hint" title="Posted in Discord">· via Discord</span>' : '';
+        return '<div class="match-card" style="padding:8px 12px">' +
+          '<div class="vs" style="font-size:14px"><b>' + esc(m.author_name) + '</b>' + src +
+          ' <span class="hint" style="float:right">' + esc(ago(m.created_at)) + '</span></div>' +
+          '<div style="margin-top:2px;white-space:pre-wrap;word-break:break-word">' + esc(m.body) + '</div></div>';
+      }).join('');
+    }
+    function buildShell() {
+      app.innerHTML =
+        '<h1>Chat</h1><p class="sub">Shared with everyone signed in — also bridged to Discord ' +
+        '(messages from Discord can take up to a minute to show up here).</p>' +
+        '<div class="panel" id="chatList" style="max-height:60vh;overflow-y:auto;display:flex;flex-direction:column;gap:6px"></div>' +
+        '<form id="chatF" style="margin-top:10px" class="inline-actions">' +
+        '<input name="body" placeholder="Message the ladder…" maxlength="500" style="flex:1" autocomplete="off">' +
+        '<button class="small" data-act="chatSend">Send</button></form><div id="chatMsg"></div>';
+      document.getElementById('chatF').addEventListener('submit', function () { ACTIONS.chatSend(); });
+      document.querySelector('#chatF [name=body]').focus();
+      built = true;
+    }
+    function load(first) {
+      get({ fn: 'chat_list', room: room }).then(function (r) {
+        if (!r.ok) { app.innerHTML = '<h1>Chat</h1>' + msgBox(r.error, 'err'); built = false; return; }
+        if (!built) buildShell();
+        var listEl = document.getElementById('chatList');
+        var wasAtEnd = listEl.scrollTop + listEl.clientHeight >= listEl.scrollHeight - 40;
+        var isNew = !first && r.messages.some(function (m) { return !seen[m.id]; });
+        listEl.innerHTML = r.messages.length ? renderMsgs(r.messages) : '<p class="hint">No messages yet — say hi.</p>';
+        if (first || wasAtEnd || isNew) listEl.scrollTop = listEl.scrollHeight;
+      });
+    }
+    load(true);
+    startPoll(function () { load(false); }, 6000);
   }
 
   function renderRegister() {
@@ -292,7 +351,7 @@
         var noMatches = !(r.matches || []).length;
         var pre = (c.type !== 'ladder' && noMatches) ? entrantsPanel(r) : '';
         var rules = (c.type === 'ladder')
-          ? '<p class="hint" style="margin:-8px 0 20px"><a href="rules.html">Full ladder rules →</a></p>'
+          ? '<p class="hint" style="margin:-8px 0 20px"><a href="rules.html?comp=' + esc(slug) + '">Full ladder rules →</a></p>'
           : rulesPanel(c, r.config || {}, slug);
         if (c.type === 'ladder') app.innerHTML = head + rules + ladderView(r);
         else if (c.type === 'round_robin') app.innerHTML = head + rules + pre + (noMatches ? '' : roundRobinView(r));
@@ -324,7 +383,11 @@
   function ladderView(r) {
     var s = r.standings || [];
     if (!s.length) return '<div class="panel hint">No players on the ladder yet. <a href="?comp=' + esc(r.competition.slug) + '&view=join">Join it.</a></div>';
-    var note = '<p class="hint">Challenge up to ' + r.config.challenge_range + ' positions above you · drop after ' + r.config.inactivity_days + ' days idle.</p>';
+    var pts = r.competition.ladder_mode === 'points';
+    var note = pts
+      ? '<p class="hint">Points ladder — challenge anyone, any rank. Beating a higher-ranked player pays big; beating a lower-ranked one pays little. ' +
+        'Max ' + r.config.pts_pairLimit + ' matches between the same two players per ' + r.config.pts_pairWindowHours + 'h.</p>'
+      : '<p class="hint">Challenge up to ' + r.config.challenge_range + ' positions above you · drop after ' + r.config.inactivity_days + ' days idle.</p>';
     var rows = s.map(function (p) {
       var flags = (p.flags || '').split(/\s+/).filter(Boolean).map(function (f) {
         return '<span class="tag ' + (f === 'inactive' ? '' : 'amber') + '">' + esc(f) + '</span>';
@@ -333,6 +396,7 @@
       var away = (p.away_until && Date.parse(p.away_until) > Date.now())
         ? ' <span class="tag">away · back ' + esc(String(p.away_until).slice(0, 10)) + '</span>' : '';
       return '<tr><td class="rank">' + p.position + '</td><td>' + esc(p.ingame_name) + roster + away + ' ' + flags + '</td>' +
+        (pts ? '<td class="num"><b>' + p.points + '</b></td>' : '') +
         '<td class="num">' + p.wins + '–' + p.losses + '</td><td class="num">' + streakCell(p.streak) + '</td>' +
         '<td class="hint">' + (p.last_match_at ? ago(p.last_match_at) : 'never') + '</td></tr>';
     }).join('');
@@ -341,8 +405,19 @@
       return '<tr><td>' + esc(nameById(r, x.challenger_id)) + ' → ' + esc(nameById(r, x.defender_id)) +
         '</td><td class="hint num">accept within ' + until(x.accept_by) + '</td></tr>';
     }).join('') + '</tbody></table></div>' : '';
-    return note + '<div class="panel"><table><thead><tr><th>#</th><th>Player</th><th class="num">W–L</th>' +
-      '<th class="num">Streak</th><th>Last played</th></tr></thead><tbody>' + rows + '</tbody></table></div>' + chalHtml;
+    var seasons = r.seasons || [];
+    var hist = seasons.length ? '<h2>Past seasons</h2>' + seasons.map(function (s) {
+      var sp = s.standings.length && s.standings[0].points !== undefined;
+      return '<details class="panel"><summary><b>' + esc(s.name) + '</b> · 🏆 ' + esc(s.champion) +
+        ' <span class="hint">· closed ' + esc(String(s.closed_at).slice(0, 10)) + '</span></summary>' +
+        '<table style="margin-top:10px"><thead><tr><th>#</th><th>Player</th>' + (sp ? '<th class="num">Points</th>' : '') + '<th class="num">W–L</th></tr></thead><tbody>' +
+        s.standings.map(function (p) {
+          return '<tr><td class="rank">' + p.position + '</td><td>' + esc(p.name) + '</td>' + (sp ? '<td class="num">' + p.points + '</td>' : '') +
+            '<td class="num">' + p.wins + '–' + p.losses + '</td></tr>';
+        }).join('') + '</tbody></table></details>';
+    }).join('') : '';
+    return note + '<div class="panel"><table><thead><tr><th>#</th><th>Player</th>' + (pts ? '<th class="num">Points</th>' : '') + '<th class="num">W–L</th>' +
+      '<th class="num">Streak</th><th>Last played</th></tr></thead><tbody>' + rows + '</tbody></table></div>' + chalHtml + hist;
   }
   function roundRobinView(r) {
     var s = r.standings || [];
@@ -466,7 +541,7 @@
         // enrollments
         html += '<h2>Your competitions</h2>';
         html += (r.enrollments || []).length ? '<div class="panel"><table><tbody>' + r.enrollments.map(function (e) {
-          var extra = e.comp_type === 'ladder' && e.status === 'active' ? '#' + e.position
+          var extra = e.comp_type === 'ladder' && e.status === 'active' ? '#' + e.position + (e.points ? ' · ' + e.points + ' pts' : '')
             : e.status === 'active' ? e.wins + '–' + e.losses : e.status;
           return '<tr><td><a href="?comp=' + esc(e.comp_slug) + '">' + esc(e.comp_name) + '</a> ' +
             '<span class="hint">' + esc(e.comp_type.replace('_', ' ')) + '</span></td>' +
@@ -536,7 +611,8 @@
       '<button class="small" data-act="evidence" data-m="' + m.id + '">Submit evidence</button></form>';
   }
   function ladderChallengeUI(L) {
-    var html = '<h2>' + esc(L.comp_name || 'Ladder') + ' — you are #' + L.position + '</h2>';
+    var pts = L.mode === 'points';
+    var html = '<h2>' + esc(L.comp_name || 'Ladder') + ' — you are #' + L.position + (pts ? ' · ' + L.points + ' pts' : '') + '</h2>';
     html += awayControl(L);
     // Only PENDING challenges belong here. Once accepted, it's a match to play —
     // it shows under "Your matches" with a report form, so we don't repeat it (and
@@ -548,9 +624,11 @@
           return '<div class="match-card"><div class="vs"><b>' + esc(x.challenger) + '</b> challenged you</div>' +
             '<p class="hint">Respond within ' + until(x.accept_by) + ' or auto-forfeit.</p>' +
             '<div class="inline-actions"><button class="small" data-act="accept" data-c="' + x.id + '">Accept</button>' +
-            '<button class="small ghost" data-act="decline" data-c="' + x.id + '">Decline (cede position)</button></div></div>';
+            '<button class="small ghost" data-act="decline" data-c="' + x.id + '">' + (pts ? 'Decline (forfeit)' : 'Decline (cede position)') + '</button></div></div>';
         }
-        var downForfeit = L.position === 1
+        var downForfeit = pts
+          ? 'If they don’t accept in ' + until(x.accept_by) + ', you’re awarded the win and the points.'
+          : L.position === 1
           ? 'If they don’t accept in ' + until(x.accept_by) + ', you win by forfeit — no position change, you’re already #1.'
           : 'If they don’t accept in ' + until(x.accept_by) + ', you win by forfeit and take their spot.';
         return '<div class="match-card"><div class="vs">You challenged <b>' + esc(x.defender) + '</b> — waiting for a response</div>' +
@@ -567,15 +645,20 @@
     else if (!L.can_challenge) html += '<div class="panel hint">You have an active challenge right now.</div>';
     else if (!(L.challengeable || []).length) html += '<div class="panel hint">Nobody in range right now.</div>';
     else html += '<div class="panel"><table><tbody>' + L.challengeable.map(function (p) {
-      var locked = p.rematch_until && Date.parse(p.rematch_until) > Date.now();
+      var locked = pts ? (p.pair_until && Date.parse(p.pair_until) > Date.now()) : (p.rematch_until && Date.parse(p.rematch_until) > Date.now());
       var cell = locked
-        ? '<span class="hint" title="You challenged them last time — you can rematch once this clears.">rematch locked · ' + until(p.rematch_until) + '</span>'
+        ? (pts
+          ? '<span class="hint" title="You two have already played each other the maximum number of times recently.">pair cooldown · ' + until(p.pair_until) + '</span>'
+          : '<span class="hint" title="You challenged them last time — you can rematch once this clears.">rematch locked · ' + until(p.rematch_until) + '</span>')
         : '<button class="small" data-act="challenge" data-p="' + p.id + '">Challenge</button>';
+      var stakesCell = pts && p.stakes
+        ? '<td class="num" title="Estimate: if you win / if you lose. The final numbers use both players’ points when the match is confirmed."><span class="tag good">+' + p.stakes.win + '</span> <span class="tag red">−' + p.stakes.lose + '</span></td>' : '';
       var downTag = p.challenge_down ? ' <span class="hint" title="Challenging down — you gain nothing by winning, but they take #1 if they win.">↓</span>' : '';
       return '<tr' + (locked ? ' style="opacity:.55"' : '') + '><td class="rank">' + p.position + '</td><td>' + esc(p.ingame_name) + downTag + '</td>' +
-        '<td class="num">' + p.wins + '–' + p.losses + '</td>' +
+        (pts ? '<td class="num">' + p.points + '</td>' : '') +
+        '<td class="num">' + p.wins + '–' + p.losses + '</td>' + stakesCell +
         '<td class="num">' + cell + '</td></tr>';
-    }).join('') + '</tbody></table></div>';
+    }).join('') + '</tbody></table></div>' + (pts ? '<p class="hint">Green = points you gain if you win, red = points you lose if you lose.</p>' : '');
     return html;
   }
 
@@ -646,6 +729,8 @@
       '<div class="row2"><div><label>Format</label><select name="type">' +
       '<option value="single_elim">Single elimination</option><option value="double_elim">Double elimination</option>' +
       '<option value="round_robin">Round robin</option><option value="ladder">Ladder (ongoing, no bracket)</option></select></div>' +
+      '<div><label>Ladder mode <span class="hint">(ladders only)</span></label><select name="ladder_mode">' +
+      '<option value="classic">Classic — position ladder</option><option value="points">Points — Elo-style, challenge anyone</option></select></div>' +
       '<div><label>Confirm mode</label><select name="confirm_mode">' +
       '<option value="opponent">Opponent confirms</option><option value="mutual">Both report</option><option value="trust">Trust (instant)</option></select></div></div>' +
       '<div class="row3"><div><label>Best of</label><input name="best_of" type="number" value="3" min="1"></div>' +
@@ -669,7 +754,7 @@
       e.preventDefault();
       document.getElementById('crMsg').innerHTML = '<p class="hint">Creating…</p>';
       post({
-        fn: 'create', name: f.name.value.trim(), type: f.type.value, confirm_mode: f.confirm_mode.value,
+        fn: 'create', name: f.name.value.trim(), type: f.type.value, ladder_mode: f.ladder_mode.value, confirm_mode: f.confirm_mode.value,
         evidence_policy: f.evidence_policy.value, best_of: f.best_of.value, target_score: f.target_score.value,
         start_date: f.start_date.value, start_tentative: f.start_tentative.checked,
         signup_deadline: f.signup_deadline.value, report_deadline_days: f.report_deadline_days.value,
@@ -808,7 +893,7 @@
     var STAT = ['active', 'pending', 'inactive', 'withdrawn', 'banned', 'rejected'];
     var isLadderComp = c.type === 'ladder';
     html += '<h2>Participants (' + parts.length + ')</h2><div class="panel"><table><thead><tr>' +
-      '<th>#</th><th>Player</th><th>Status</th><th></th>' + (isLadderComp ? '<th>Away</th>' : '') + '</tr></thead><tbody>' +
+      '<th>#</th><th>Player</th>' + (c.ladder_mode === 'points' ? '<th class="num">Points</th>' : '') + '<th>Status</th><th></th>' + (isLadderComp ? '<th>Away</th>' : '') + '</tr></thead><tbody>' +
       parts.sort(function (a, b) { return (Number(a.position) || 99) - (Number(b.position) || 99); }).map(function (p) {
         var awayNow = p.away_until && Date.parse(p.away_until) > Date.now();
         var awayCell = !isLadderComp ? '' : '<td class="num"><form id="af_' + p.id + '">' +
@@ -818,9 +903,12 @@
           '</form></td>';
         return '<tr><td class="rank">' +
           (c.type === 'ladder'
-            ? '<input style="width:52px" name="pos" form="pf_' + p.id + '" value="' + esc(p.position || '') + '">'
+            ? (c.ladder_mode === 'points'
+              ? esc(p.position || '–')
+              : '<input style="width:52px" name="pos" form="pf_' + p.id + '" value="' + esc(p.position || '') + '">')
             : (p.seed || '–')) + '</td>' +
           '<td>' + esc(p.display_name) + ' <span class="hint">' + esc(p.ingame_name) + (p.email ? ' · ' + esc(p.email) : '') + '</span></td>' +
+          (c.ladder_mode === 'points' ? '<td class="num"><input style="width:70px" name="pts" form="pf_' + p.id + '" value="' + esc(p.points || '') + '"></td>' : '') +
           '<td><select name="status" form="pf_' + p.id + '">' +
           STAT.map(function (v) { return '<option' + (p.status === v ? ' selected' : '') + '>' + v + '</option>'; }).join('') + '</select></td>' +
           '<td class="num"><form id="pf_' + p.id + '"><button class="small" data-act="partSet" data-p="' + p.id + '" data-c="' + esc(c.slug) + '">Save</button></form></td>' +
@@ -870,6 +958,16 @@
           '<td class="hint">' + esc(e.action) + '</td><td>' + esc(e.detail) + '</td></tr>';
       }).join('') + '</tbody></table></details>' : '<div class="panel hint">No activity logged yet.</div>';
 
+    if (c.type === 'ladder' && r.role === 'admin') {
+      var sList = (r.seasons || []).map(function (s) { return esc(s.name) + ' (🏆 ' + esc(s.champion) + ')'; }).join(' · ');
+      html += '<h2>Seasons</h2><div class="panel"><p class="hint">This is season ' + ((r.seasons || []).length + 1) + '.' + (sList ? ' Past: ' + sList : ' No seasons have been closed yet.') + '</p>' +
+        '<details><summary style="color:var(--accent)">End this season…</summary>' +
+        '<p class="hint">Saves the final standings to the season history, cancels any open challenges, and resets the ladder: records are cleared and ' +
+        (c.ladder_mode === 'points' ? 'everyone returns to the starting points.' : 'the current order carries over.') + ' Match history is kept. This cannot be undone.</p>' +
+        '<form id="seasonF"><label>Season name <span class="hint">(optional, e.g. “Autumn 2026”)</span></label><input name="sname" maxlength="60">' +
+        '<label>Type <code>' + esc(c.slug) + '</code> to confirm</label><input name="confirm" autocomplete="off">' +
+        '<button class="small" data-act="seasonClose" data-c="' + esc(c.slug) + '">End season</button></form></details></div>';
+    }
     html += '<details class="panel"><summary style="color:var(--accent)">Danger zone</summary>' +
       '<p class="hint">Deleting removes the competition and all its participants, matches and challenges. The ladder cannot be deleted.</p>' +
       '<form id="delF"><label>Type <code>' + esc(c.slug) + '</code> to confirm</label><input name="confirm">' +
@@ -935,6 +1033,20 @@
       var f = document.getElementById('pfF');
       post({ fn: 'profile', display_name: f.display_name.value.trim(), ingame_name: f.ingame_name.value.trim() })
         .then(function (r) { toast(r.ok ? 'Saved.' : r.error, r.ok ? 'ok' : 'err'); if (r.ok) reload(); });
+    },
+    chatSend: function () {
+      var input = document.querySelector('#chatF [name=body]');
+      if (!input) return;
+      var body = input.value.trim();
+      if (!body) return;
+      input.disabled = true;
+      post({ fn: 'chat_send', room: 'general', body: body }).then(function (r) {
+        input.disabled = false;
+        var box = document.getElementById('chatMsg');
+        if (!r.ok) { if (box) box.innerHTML = msgBox(r.error, 'err'); input.focus(); return; }
+        if (box) box.innerHTML = '';
+        reload();
+      });
     },
     joinNow: function (b) {
       var slug = b.getAttribute('data-c');
@@ -1079,6 +1191,7 @@
       var f = document.getElementById('pf_' + id);
       var body = { fn: 'participant_set', participant_id: id, status: f.status.value };
       if (f.pos) body.position = f.pos.value;
+      if (f.pts) body.points = f.pts.value;
       staffAct(body);
     },
     modAwaySet: function (b) {
@@ -1124,6 +1237,14 @@
       if (!confirm(who ? 'Reverse this result and re-rule it?' : 'Reverse and void this result?')) return;
       post(body).then(function (r) {
         toast(r.ok ? (r.message || 'Reversed.') : r.error, r.ok ? 'ok' : 'err');
+        if (r.ok) reload();
+      });
+    },
+    seasonClose: function (b) {
+      var f = document.getElementById('seasonF');
+      if (!confirm('End this season now? The final standings are saved and the ladder resets. This cannot be undone.')) return;
+      post({ fn: 'season_close', comp: b.getAttribute('data-c'), name: f.sname.value.trim(), confirm: f.confirm.value.trim() }).then(function (r) {
+        toast(r.ok ? (r.message || 'Season closed.') : r.error, r.ok ? 'ok' : 'err');
         if (r.ok) reload();
       });
     },
