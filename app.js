@@ -696,11 +696,11 @@
         var html = '<h1>Organizer console</h1>';
         if (!comp) html += '<p class="sub">Pick a competition above, or create one.</p>' +
           needsAttention(r) + createForm(r.role) +
-          (r.role === 'admin' ? staffSection() + systemSettings(r.settings || []) : '');
+          (r.role === 'admin' ? staffSection() + hooksSection(r.hooks || []) + systemSettings(r.settings || []) : '');
         else if (r.competition) html += adminCompView(r);
         app.innerHTML = html;
         wireCreate();
-        if (!comp && r.role === 'admin') { loadStaff(); wireSettings(); }
+        if (!comp && r.role === 'admin') { loadStaff(); wireSettings(); wireHooks(); }
         if (comp && r.competition) wireCompEdit(r.competition);
       });
     }
@@ -772,6 +772,48 @@
       list.map(function (s) {
         return '<tr><td class="hint">' + esc(s.key) + '</td><td><input name="' + esc(s.key) + '" value="' + esc(s.value) + '"></td></tr>';
       }).join('') + '</tbody></table><button class="small" type="submit">Save settings</button><div id="setMsg"></div></form></div>';
+  }
+  // Webhook links: paste one to connect a Grotto or Discord channel. They're secrets, so the page only ever
+  // shows whether one is set (and its last 4 characters), never the link itself.
+  function hookState(h) {
+    if (!h.set) return 'not connected';
+    return 'connected (link ends …' + h.ends + (h.from === 'cloudflare' ? ', set in Cloudflare' : '') + ')';
+  }
+  function hooksSection(list) {
+    if (!list.length) return '';
+    return '<h2>Where posts go</h2><div class="panel"><p class="hint">Paste a channel&rsquo;s webhook link to send match posts or site chat there. ' +
+      'In Grotto: Grotto settings → Webhooks → Create. In Discord: channel settings → Integrations → Webhooks. ' +
+      'Links are kept secret: this page never shows them again.</p><form id="hookF"><table><tbody>' +
+      list.map(function (h) {
+        return '<tr><td>' + esc(h.label) + '<div class="hint" data-hook-state="' + esc(h.key) + '">' + esc(hookState(h)) + '</div></td>' +
+          '<td><input name="' + esc(h.key) + '" type="url" autocomplete="off" spellcheck="false" placeholder="' + (h.set ? 'paste a new link to replace it' : 'https://…') + '">' +
+          (h.from === 'settings' ? '<label class="hint"><input type="checkbox" data-clear="' + esc(h.key) + '"> disconnect</label>' : '') + '</td></tr>';
+      }).join('') + '</tbody></table><button class="small" type="submit">Save links</button><div id="hookMsg"></div></form></div>';
+  }
+  function wireHooks() {
+    var f = document.getElementById('hookF');
+    if (!f || f._wired) return;
+    f._wired = true;
+    f.addEventListener('submit', function (e) {
+      e.preventDefault();
+      var jobs = [];
+      Array.prototype.slice.call(f.querySelectorAll('input[name]')).forEach(function (i) {
+        var clear = f.querySelector('[data-clear="' + i.name + '"]');
+        if (i.value.trim()) jobs.push({ key: i.name, value: i.value.trim() });
+        else if (clear && clear.checked) jobs.push({ key: i.name, value: '' });
+      });
+      if (!jobs.length) { document.getElementById('hookMsg').innerHTML = msgBox('Paste a link first.', 'info'); return; }
+      var chain = Promise.resolve(), err = '', last = null;
+      jobs.forEach(function (j) {
+        chain = chain.then(function () { return post({ fn: 'config_set', ckey: j.key, value: j.value }); })
+          .then(function (r) { if (!r.ok) err = r.error; else last = r.hooks; });
+      });
+      chain.then(function () {
+        if (last) last.forEach(function (h) { var el = f.querySelector('[data-hook-state="' + h.key + '"]'); if (el) el.textContent = hookState(h); });
+        Array.prototype.slice.call(f.querySelectorAll('input[name]')).forEach(function (i) { i.value = ''; });
+        document.getElementById('hookMsg').innerHTML = err ? msgBox(err, 'err') : msgBox('Saved. The next post goes to the new link.', 'ok');
+      });
+    });
   }
   function wireSettings() {
     var f = document.getElementById('setF');
